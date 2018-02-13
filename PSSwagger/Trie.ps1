@@ -19,44 +19,22 @@ function Add-WordToTrie {
         [hashtable]$Trie
     )
 
-    $CurrentLevel = $Trie
     $Word = $Word.ToLower()
-    $letter = $Word[0]
 
-    if (-not $CurrentLevel.ContainsKey($letter)) {
-        $CurrentLevel[$letter] = @{}
-    }
+    $Trie[$Word] = $true
 
-    if ($Word.Length -gt 1) {
-        $CurrentLevel[$letter] = Add-WordToTrie -Trie $CurrentLevel[$letter] -Word $Word.Substring(1)
-    } else {
-        $CurrentLevel[$letter]['IsLeaf'] = $true
-    }
-
-    return $CurrentLevel
+    return $Trie
 }
 
 function Test-Trie {
     param(
         [Parameter(Mandatory=$true)]
-        [char]$Letter,
+        [string]$Word,
         [Parameter(Mandatory=$true,ValueFromPipeline)]
         [hashtable]$Trie
     )
 
-    $Letter = [char]::ToLower($Letter)
-    if ($Trie.ContainsKey($Letter)) {
-        return $Trie[$Letter]
-    }
+    $Word = $Word.ToLower()
 
-    return $null
-}
-
-function Test-TrieLeaf {
-    param(
-        [Parameter(Mandatory=$true,ValueFromPipeline)]
-        [hashtable]$Trie
-    )
-
-    return $Trie -and $Trie.ContainsKey('IsLeaf')
+    return $Trie.ContainsKey($Word)
 }

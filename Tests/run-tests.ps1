@@ -28,7 +28,7 @@ $nugetPackageSource = Test-NugetPackageSource
 $nodeModuleVersions = @{}
 $NodeJSVersion = '7.10.0'
 $NodeJSPackageName = "node-v$NodeJSVersion-win-x64"
-$AutoRestVersion = '1.2.2'
+$AutoRestVersion = '2.0.4245'
 
 # Note: If we use the $PSScriptRoot, Expand-Archive cmdlet is failing with path too long error (260 characters limit). 
 # So using $env:SystemDrive\$NodeJSPackageName path for now.

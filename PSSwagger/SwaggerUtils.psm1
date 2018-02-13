@@ -8,37 +8,18 @@
 #
 #########################################################################################
 
+$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
+
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1)
 Import-Module -Name 'PSSwaggerUtility'
 . "$PSScriptRoot\PSSwagger.Constants.ps1" -Force
 . "$PSScriptRoot\Trie.ps1" -Force
-. "$PSScriptRoot\PSCommandVerbMap.ps1" -Force
+. "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 $script:CmdVerbTrie = $null
 $script:CSharpCodeNamer = $null
 $script:CSharpCodeNamerLoadAttempted = $false
-
-$script:PluralizationService = $null
-# System.Data.Entity.Design.PluralizationServices.PluralizationService is not yet supported on coreclr.
-if(-not (Get-OperatingSystemInfo).IsCore)
-{
-    if(-not ('System.Data.Entity.Design.PluralizationServices.PluralizationService' -as [Type]))
-    {
-        Add-Type -AssemblyName System.Data.Entity.Design
-    }
-
-    $script:PluralizationService = [System.Data.Entity.Design.PluralizationServices.PluralizationService]::CreateService([System.Globalization.CultureInfo]::GetCultureInfo('en-US'))
-
-    $PluralToSingularMapPath = Join-Path -Path $PSScriptRoot -ChildPath 'PluralToSingularMap.json'
-    if(Test-Path -Path $PluralToSingularMapPath -PathType Leaf)
-    {
-        $PluralToSingularMapJsonObject = ConvertFrom-Json -InputObject ((Get-Content -Path $PluralToSingularMapPath) -join [Environment]::NewLine) -ErrorAction Stop
-        $PluralToSingularMapJsonObject.CustomPluralToSingularMapping | ForEach-Object {
-            $script:PluralizationService.AddWord($_.PSObject.Properties.Value, $_.PSObject.Properties.Name)
-        }
-    }
-}
 
 $script:IgnoredAutoRestParameters = @(@('Modeler', 'm'), @('AddCredentials'), @('CodeGenerator', 'g'))
 $script:PSSwaggerDefaultNamespace = "Microsoft.PowerShell"
@@ -1247,47 +1228,7 @@ function Get-PSTypeFromSwaggerObject
         $JsonObject
     )
 
-    $ParameterFormat = $null
-
-    if($JsonObject) {
-        if((Get-Member -InputObject $JsonObject -Name 'Type') -and $JsonObject.Type)
-        {
-            $ParameterType = $JsonObject.Type
-        }
-
-        if((Get-Member -InputObject $JsonObject -Name 'Format') -and
-        $JsonObject.Format -and ($null -ne ($JsonObject.Format -as [Type])))
-        {
-            $ParameterFormat = $JsonObject.Format
-        }
-    }
-    
-    switch ($ParameterType) {
-        'Boolean' {
-            $ParameterType = 'switch'
-            break
-        }
-
-        'Integer' {
-            if($ParameterFormat) {
-                $ParameterType = $ParameterFormat
-            }
-            else {
-                $ParameterType = 'int64'
-            }
-            break
-        }
-
-        'Number' {
-            if($ParameterFormat) {
-                $ParameterType = $ParameterFormat
-            }
-            else {
-                $ParameterType = 'double'
-            }
-            break
-        }
-    }
+    $ParameterType = Eval-Ts $tsSwaggerUtils "getPsTypeFromSwaggerObject" $ParameterType, $JsonObject
 
     return $ParameterType
 }
@@ -1300,11 +1241,8 @@ function Get-SingularizedValue
         [string]
         $Name
     )
-    
-    if($script:PluralizationService)
-    {
-        $Name = $script:PluralizationService.Singularize($Name)
-    }
+
+    $Name = Eval-Ts $tsSwaggerUtils "singularize" $Name
 
     return Get-PascalCasedString -Name $Name
 }
@@ -1320,137 +1258,124 @@ function Get-PathCommandName
     )
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-
-    $opId = $OperationId
-
-    if ($script:CmdVerbTrie -eq $null) {
-        $script:CmdVerbTrie = New-Trie
-        $script:PSCommandVerbMap.GetEnumerator() | ForEach-Object {
-            $script:CmdVerbTrie = Add-WordToTrie -Word $_.Name -Trie $script:CmdVerbTrie
-        }
-
-        # Add approved verbs to Command Verb Trie
-        Get-Verb | ForEach-Object {
-            $script:CmdVerbTrie = Add-WordToTrie -Word $_.Verb -Trie $script:CmdVerbTrie
-        }        
-    }
-
-    $currentTriePtr = $script:CmdVerbTrie
     
-    $opIdValues = $opId  -split "_",2
-    
-    if($opIdValues -and ($opIdValues.Count -eq 2)) {
-        $cmdNoun = (Get-SingularizedValue -Name $opIdValues[0])
-        $cmdVerb = $opIdValues[1]
-    }
-    else {
-        # OperationId can be specified without '_' (Underscore), Verb will retrieved by the below logic for non-approved verbs.
-        $cmdNoun = ''
-        $cmdVerb = Get-SingularizedValue -Name $opId
-    }
+    $res = Eval-Ts $tsSwaggerUtils "getPathCommandName" $OperationId
+    $res = $res | ForEach { $ht = @{}; $_.psobject.properties | ForEach { $ht[$_.Name] = $_.Value }; return $ht }
+    return $res
 
-    if (-not (Get-Verb -Verb $cmdVerb))
-    {
-        $UnapprovedVerb = $cmdVerb
-        $message = $LocalizedData.UnapprovedVerb -f ($UnapprovedVerb)
-        Write-Verbose $message
+    # $opIdValues = $OperationId  -split "_",2
+    
+    # if($opIdValues -and ($opIdValues.Count -eq 2)) {
+    #     $cmdNoun = (Get-SingularizedValue -Name $opIdValues[0])
+    #     $cmdVerb = $opIdValues[1]
+    # }
+    # else {
+    #     # 
+    #     $cmdNoun = ''
+    #     $cmdVerb = Get-SingularizedValue -Name $OperationId
+    # }
+
+    # if (-not (Get-Verb -Verb $cmdVerb))
+    # {
+    #     $UnapprovedVerb = $cmdVerb
+    #     $message = $LocalizedData.UnapprovedVerb -f ($UnapprovedVerb)
+    #     Write-Verbose $message
         
-        if ($script:PSCommandVerbMap.ContainsKey($cmdVerb))
-        {
-            # This condition happens when there aren't any suffixes
-            $cmdVerb = $script:PSCommandVerbMap[$cmdVerb] -Split ',' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-            $cmdVerb | ForEach-Object {
-                $message = $LocalizedData.ReplacedVerb -f ($_, $UnapprovedVerb)
-                Write-Verbose -Message $message
-            }
-        }
-        else
-        {
-            # This condition happens in cases like: CreateSuffix, CreateOrUpdateSuffix
-            $longestVerbMatch = $null
-            $currentVerbCandidate = ''
-            $firstWord = ''
-            $firstWordStarted = $false
-            $buildFirstWord = $false
-            $firstWordEnd = -1
-            $verbMatchEnd = -1
-            for($i = 0; $i -lt $UnapprovedVerb.Length; $i++) {
-                # Add the start condition of the first word so that the end condition is easier
-                if (-not $firstWordStarted) {
-                    $firstWordStarted = $true
-                    $buildFirstWord = $true
-                } elseif ($buildFirstWord -and ([int]$UnapprovedVerb[$i] -ge 65) -and ([int]$UnapprovedVerb[$i] -le 90)) {
-                    # Stop building the first word when we encounter another capital letter
-                    $buildFirstWord = $false
-                    $firstWordEnd = $i
-                }
+    #     if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $cmdVerb)
+    #     {
+    #         # This condition happens when there aren't any suffixes
+    #         $cmdVerb = Eval-Ts $tsSwaggerUtils "MapVerb" $cmdVerb
+    #         $cmdVerb | ForEach-Object {
+    #             $message = $LocalizedData.ReplacedVerb -f ($_, $UnapprovedVerb)
+    #             Write-Verbose -Message $message
+    #         }
+    #     }
+    #     else
+    #     {
+    #         # This condition happens in cases like: CreateSuffix, CreateOrUpdateSuffix
+    #         $longestVerbMatch = $null
+    #         $currentVerbCandidate = ''
+    #         $firstWord = ''
+    #         $firstWordStarted = $false
+    #         $buildFirstWord = $false
+    #         $firstWordEnd = -1
+    #         $verbMatchEnd = -1
+    #         for($i = 0; $i -lt $UnapprovedVerb.Length; $i++) {
+    #             # Add the start condition of the first word so that the end condition is easier
+    #             if (-not $firstWordStarted) {
+    #                 $firstWordStarted = $true
+    #                 $buildFirstWord = $true
+    #             } elseif ($buildFirstWord -and ([int]$UnapprovedVerb[$i] -ge 65) -and ([int]$UnapprovedVerb[$i] -le 90)) {
+    #                 # Stop building the first word when we encounter another capital letter
+    #                 $buildFirstWord = $false
+    #                 $firstWordEnd = $i
+    #             }
 
-                if ($buildFirstWord) {
-                    $firstWord += $UnapprovedVerb[$i]
-                }
+    #             if ($buildFirstWord) {
+    #                 $firstWord += $UnapprovedVerb[$i]
+    #             }
 
-                if ($currentTriePtr) {
-                    # If we're still running along the trie just fine, keep checking the next letter
-                    $currentVerbCandidate += $UnapprovedVerb[$i]
-                    $currentTriePtr = Test-Trie -Trie $currentTriePtr -Letter $UnapprovedVerb[$i]
-                    if ($currentTriePtr -and (Test-TrieLeaf -Trie $currentTriePtr)) {
-                        # The latest verb match is also the longest verb match
-                        $longestVerbMatch = $currentVerbCandidate
-                        $verbMatchEnd = $i+1
-                    }
-                }
-            }
+    #             # If we're still running along the trie just fine, keep checking the next letter
+    #             $currentVerbCandidate += $UnapprovedVerb[$i]
+    #             if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $currentVerbCandidate) {
+    #                 # The latest verb match is also the longest verb match
+    #                 $longestVerbMatch = $currentVerbCandidate
+    #                 $verbMatchEnd = $i+1
+    #             }
+    #         }
 
-            if ($longestVerbMatch) {
-                $beginningOfSuffix = $verbMatchEnd
-                $cmdVerb = $longestVerbMatch
-            } else {
-                $beginningOfSuffix = $firstWordEnd
-                $cmdVerb = $firstWord
-            }
+    #         if ($longestVerbMatch) {
+    #             $beginningOfSuffix = $verbMatchEnd
+    #             $cmdVerb = $longestVerbMatch
+    #         } else {
+    #             $beginningOfSuffix = $firstWordEnd
+    #             $cmdVerb = $firstWord
+    #         }
 
-            if ($script:PSCommandVerbMap.ContainsKey($cmdVerb)) { 
-                $cmdVerb = $script:PSCommandVerbMap[$cmdVerb] -Split ',' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-            }
+    #         if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $cmdVerb) { 
+    #             $cmdVerb = Eval-Ts $tsSwaggerUtils "MapVerb" $cmdVerb
+    #         }
 
-            if (-1 -ne $beginningOfSuffix) {
-                # This is still empty when a verb match is found that is the entire string, but it might not be worth checking for that case and skipping the below operation
-                $cmdNounSuffix = $UnapprovedVerb.Substring($beginningOfSuffix)
-                # Add command noun suffix only when the current noun doesn't contain it or vice-versa. 
-                if(-not $cmdNoun) {
-                    $cmdNoun = Get-PascalCasedString -Name $cmdNounSuffix
-                }                
-                elseif(-not $cmdNounSuffix.StartsWith('By', [System.StringComparison]::OrdinalIgnoreCase)) {
-                    if(($cmdNoun -notmatch $cmdNounSuffix) -and ($cmdNounSuffix -notmatch $cmdNoun)) {
-                        $cmdNoun = $cmdNoun + (Get-PascalCasedString -Name $cmdNounSuffix)
-                    }
-                    elseif($cmdNounSuffix -match $cmdNoun) {
-                        $cmdNoun = $cmdNounSuffix
-                    }
-                }
-            }
-        }
-    }
+    #         if (-1 -ne $beginningOfSuffix) {
+    #             # This is still empty when a verb match is found that is the entire string, but it might not be worth checking for that case and skipping the below operation
+    #             $cmdNounSuffix = $UnapprovedVerb.Substring($beginningOfSuffix)
+    #             # Add command noun suffix only when the current noun doesn't contain it or vice-versa. 
+    #             if(-not $cmdNoun) {
+    #                 $cmdNoun = Get-PascalCasedString -Name $cmdNounSuffix
+    #             }                
+    #             elseif(-not $cmdNounSuffix.StartsWith('By', [System.StringComparison]::OrdinalIgnoreCase)) {
+    #                 if(($cmdNoun -notmatch $cmdNounSuffix) -and ($cmdNounSuffix -notmatch $cmdNoun)) {
+    #                     $cmdNoun = $cmdNoun + (Get-PascalCasedString -Name $cmdNounSuffix)
+    #                 }
+    #                 elseif($cmdNounSuffix -match $cmdNoun) {
+    #                     $cmdNoun = $cmdNounSuffix
+    #                 }
+    #             }
+    #         }
+    #     }
+    # }
 
-    # Singularize command noun
-    if($cmdNoun) {
-        $cmdNoun = Get-SingularizedValue -Name $cmdNoun
-    }
+    # # Singularize command noun
+    # if($cmdNoun) {
+    #     $cmdNoun = Get-SingularizedValue -Name $cmdNoun
+    # }
 
-    $cmdletInfos = $cmdVerb | ForEach-Object {
-        $Verb = Get-PascalCasedString -Name $_
-        if($cmdNoun){
-            $CommandName = "$Verb-$cmdNoun"
-        } else {
-            $CommandName = Get-SingularizedValue -Name $Verb
-        }
-        $cmdletInfo = @{}
-        $cmdletInfo['name'] = $CommandName
-        $cmdletInfo
-        Write-Verbose -Message ($LocalizedData.UsingCmdletNameForSwaggerPathOperation -f ($CommandName, $OperationId))
-    }
+    # $cmdletInfos = $cmdVerb | ForEach-Object {
+    #     $Verb = Get-PascalCasedString -Name $_
+    #     if($cmdNoun){
+    #         $CommandName = "$Verb-$cmdNoun"
+    #     } else {
+    #         $CommandName = Get-SingularizedValue -Name $Verb
+    #     }
+    #     $cmdletInfo = @{}
+    #     $cmdletInfo['name'] = $CommandName
+    #     $cmdletInfo
+    #     Write-Verbose -Message ($LocalizedData.UsingCmdletNameForSwaggerPathOperation -f ($CommandName, $OperationId))
+    # }
 
-    return $cmdletInfos
+    # Write-Warning "DUUUUUUUUUUUUUUUUUUMP $($cmdletInfos | ConvertTo-JSON)"
+
+    # return $cmdletInfos
 }
 
 function Get-PathFunctionBody

@@ -1,0 +1,109 @@
+$srcTsInvoke = @"
+using Newtonsoft.Json;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Management.Automation;
+
+public static class NodeTs
+{
+public static object Eval(string code, string func, string args)
+{
+    code = code + ";\n console.log(JSON.stringify(" + func + ".apply(null, JSON.parse(new Buffer(process.argv.reverse()[0], 'base64').toString('ascii')).args)))";
+
+    string target = Path.GetTempPath() + "ts" + code.GetHashCode();
+    if (!File.Exists(target + ".js"))
+    {
+        File.WriteAllText(target + ".ts", code);
+        var proc = new Process {
+            StartInfo = new ProcessStartInfo {
+                FileName = "cmd.exe",
+                Arguments = "/c tsc --target es2017 --module commonjs " + target + ".ts",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        proc.Start();
+		string stderr = "";
+        while (!proc.StandardError.EndOfStream)
+        {
+            stderr += proc.StandardError.ReadLine() + "\n";
+        }
+        while (!proc.StandardOutput.EndOfStream)
+        {
+			var stdout = proc.StandardOutput.ReadLine() + "\n";
+            if (stdout.Contains("TS2304"))
+                if (stdout.Contains("Buffer") || stdout.Contains("process"))
+                    continue;
+            stderr += stdout;
+        }
+        if (stderr.Trim() != "")
+        {
+            try { File.Delete(target + ".js"); } catch {}
+            throw new Exception(stderr);
+        }
+        proc.WaitForExit();
+    }
+
+    {
+        var proc = new Process {
+            StartInfo = new ProcessStartInfo {
+                FileName = "cmd.exe",
+                Arguments = "/c node " + target + ".js " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(args)),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        proc.Start();
+
+		string stderr = "";
+        while (!proc.StandardError.EndOfStream)
+        {
+            stderr += proc.StandardError.ReadLine() + "\n";
+        }
+		if (stderr.Trim() != "")
+        	throw new Exception(stderr);
+
+        string line = "null";
+        while (!proc.StandardOutput.EndOfStream)
+        {
+            line = proc.StandardOutput.ReadLine();
+        }
+        proc.WaitForExit();
+        return line;
+    }
+}
+}
+"@
+
+
+
+$srcTsAssem = ( "C:\Program Files\Microsoft SDKs\Azure\.NET SDK\v2.9\bin\plugins\Diagnostics\Newtonsoft.Json.dll" ) 
+Add-Type -Path $srcTsAssem
+Add-Type -ReferencedAssemblies $srcTsAssem -TypeDefinition $srcTsInvoke -Language CSharp
+
+function Eval-Ts {
+    [CmdletBinding()]
+    Param ($code, $func, [object[]] $args)
+    PROCESS {
+        If (($args -eq $null) -or (-NOT ($args.GetType().Name -eq "Object[]"))) {
+            $list = New-Object "System.Collections.ArrayList"
+            $list.Add($args)
+            $args = $list
+        }
+        $obj = New-Object PSObject
+        $obj | Add-Member Noteproperty args $args
+        $args = $obj | ConvertTo-JSON -Compress
+        Write-Warning "TS invoke start: $func($args)"
+        $res = [NodeTs]::Eval($code, $func, $args)
+        Write-Warning "TS invoke end: $res"
+        If ($res -eq "undefined") {
+            return $null
+        }
+        return $res | ConvertFrom-JSON
+    }
+}

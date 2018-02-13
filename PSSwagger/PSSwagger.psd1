@@ -32,7 +32,6 @@ Please refer to https://github.com/PowerShell/PSSwagger/blob/developer/README.md
         'Get-TaskResult.ps1',
         'Paths.psm1',
         'PluralToSingularMap.json',
-        'PSCommandVerbMap.ps1',
         'PSSwagger.Constants.ps1',
         'PSSwagger.psd1',
         'PSSwagger.psm1',

@@ -8,18 +8,15 @@
 #
 #########################################################################################
 
+Import-Module -Name "$PSScriptRoot\Eval-Ts.ps1" -Force
+
+$tsUtilities = [System.IO.File]::ReadAllText("$PSScriptRoot\Utilities.ts")
+
 function Get-PascalCasedString
 {
     param([string] $Name)
 
-    if($Name) {
-        $Name = Remove-SpecialCharacter -Name $Name
-        $startIndex = 0
-        $subStringLength = 1
-
-        return $($Name.substring($startIndex, $subStringLength)).ToUpper() + $Name.substring($subStringLength)
-    }
-
+    return (Eval-Ts $tsUtilities "getPascalCasedString" $Name)
 }
 
 <#
@@ -45,8 +42,7 @@ function Remove-SpecialCharacter
 {
     param([string] $Name)
 
-    $pattern = '[^a-zA-Z0-9]'
-    return ($Name -replace $pattern, '')
+    return (Eval-Ts $tsUtilities "removeSpecialCharacter" $Name)
 }
 
 # Utility to throw an errorrecord
