@@ -33,3 +33,9 @@ const helpParamStr = (parameterName: string, pDescription: string) => `
 `;
 
 const parameterDefaultValueString = (parameterDefaultValue: string) => ` = ${parameterDefaultValue}`;
+
+const oDataExpressionBlockStr = (oDataExpression: string) => `
+  $oDataQuery = ""
+    ${oDataExpression}
+    $oDataQuery = $oDataQuery.Trim("&")
+`;

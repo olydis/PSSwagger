@@ -122,14 +122,6 @@ function $commandName
 }
 '@
 
-$oDataExpressionBlockStr = @'
-
-
-    `$oDataQuery = ""
-    $oDataExpression
-    `$oDataQuery = `$oDataQuery.Trim("&")
-'@
-
 $constructFlattenedParameter = @'
     
     `$flattenedParameters = $flattenedParametersListStr

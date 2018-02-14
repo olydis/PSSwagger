@@ -43,6 +43,8 @@ function ConvertTo-PsCustomObjectFromHashtable {
         } 
     } 
 }
+
+# $res = $res | ForEach { $ht = @{}; $_.psobject.properties | ForEach { $ht[$_.Name] = $_.Value }; return $ht }
 function ConvertTo-HashtableFromPsCustomObject { 
      param ( 
          [Parameter(  
@@ -54,7 +56,7 @@ function ConvertTo-HashtableFromPsCustomObject {
      ); 
      
      process { 
-         foreach ($myPsObject in $psObject) { 
+         foreach ($myPsObject in $psCustomObject) { 
              $output = @{}; 
              $myPsObject | Get-Member -MemberType *Property | % { 
                  $output.($_.name) = $myPsObject.($_.name); 
@@ -1298,8 +1300,7 @@ function Get-PathCommandName
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     
     $res = Eval-Ts $tsSwaggerUtils "getPathCommandName" $OperationId
-    $res = $res | ForEach { $ht = @{}; $_.psobject.properties | ForEach { $ht[$_.Name] = $_.Value }; return $ht }
-    return $res
+    return (ConvertTo-HashtableFromPsCustomObject $res)
 }
 
 function Get-PathFunctionBody

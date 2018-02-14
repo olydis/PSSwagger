@@ -1,3 +1,6 @@
+function logVerbose(message: string) { }
+function logDebug(message: string) { }
+function logWarning(message: string) { }
 
 // DUP: Utilities.ts
 function removeSpecialCharacter(name: string): string {
@@ -278,8 +281,6 @@ function getPsTypeFromSwaggerObject(parameterType: string, jsonObject: any): str
   return parameterType;
 }
 
-function logVerbose(message: string) { }
-
 function getPathCommandName(operationId: string): any {
   const opIdValues = operationId.split("_", 2);
 
@@ -384,8 +385,6 @@ function getPathCommandName(operationId: string): any {
   });
   return cmdletInfos;
 }
-
-function logDebug(message: string) { }
 
 const csharpReservedWords = [
   'abstract', 'as', 'async', 'await', 'base',
@@ -576,6 +575,128 @@ function getOutputType(schema: any, modelsNamespace: string, definitionList: any
 
 
 
+function doParameterStuff(commandName: string, parametersToAdd: any[]): {} {
+  const parameterAliasMapping = {};
+  let oDataExpression = "";
+  let paramBlock = "";
+  let paramHelp = "";
+  let parameterGroupsExpressionBlock = "";
+  const parameterGroupsExpressions = {};
+
+  for (const parameterToAdd of Object.values(parametersToAdd)) {
+    let ValueFromPipelineString = '';
+    let ValueFromPipelineByPropertyNameString = '';
+    if (parameterToAdd) {
+      let parameterName = parameterToAdd.Details.Name;
+
+      if (parameterToAdd.Details.ValueFromPipeline) {
+        ValueFromPipelineString = ', ValueFromPipeline = $true';
+      }
+
+      if (parameterToAdd.Details.ValueFromPipelineByPropertyName) {
+        ValueFromPipelineByPropertyNameString = ', ValueFromPipelineByPropertyName = $true';
+      }
+
+      let AllParameterSetsString = '';
+      for (const parameterSetInfo of Object.values(parameterToAdd.ParameterSetInfo)) {
+        const ParameterSetPropertyString = `, ParameterSetName = '${parameterSetInfo.Name}'`;
+        if (AllParameterSetsString) {
+          // Two tabs
+          AllParameterSetsString += "\r\n        " + parameterAttributeString(parameterSetInfo.Mandatory, ValueFromPipelineByPropertyNameString, ValueFromPipelineString, ParameterSetPropertyString);
+        }
+        else {
+          AllParameterSetsString = parameterAttributeString(parameterSetInfo.Mandatory, ValueFromPipelineByPropertyNameString, ValueFromPipelineString, ParameterSetPropertyString);
+        }
+      }
+
+      if (!AllParameterSetsString) {
+        AllParameterSetsString = parameterAttributeString(parameterToAdd.Details.Mandatory, ValueFromPipelineByPropertyNameString, ValueFromPipelineString, "");
+      }
+
+      let ParameterAliasAttribute = null;
+      // Parameter has Name as an alias, change the parameter name to Name and add the current parameter name as an alias.
+      if (parameterToAdd.Details.Alias && parameterToAdd.Details.Alias.toLowerCase() === 'name') {
+        parameterAliasMapping[parameterName] = 'Name';
+        parameterName = 'Name';
+        ParameterAliasAttribute = parameterAliasAttributeString(`'${parameterName}'`);
+      }
+
+      const paramName = "$" + parameterName;
+      let ValidateSetDefinition = null
+      if (parameterToAdd.Details.ValidateSet) {
+        ValidateSetDefinition = validateSetDefinitionString(parameterToAdd.Details.ValidateSet);
+      }
+
+      let parameterDefaultValueOption = "";
+      let paramType = "\r\n        ";
+      if (parameterToAdd.Details.ExtendedData) {
+        if (parameterToAdd.Details.ExtendedData.IsODataParameter) {
+          paramType = `[${parameterToAdd.Details.Type}]${paramType}`;
+          oDataExpression += `    if ($${parameterName}) { $oDataQuery += " & \`$${parameterName} = $${parameterName}" }\r\n`;
+        }
+        else {
+          // Assuming you can't group ODataQuery parameters
+          if (parameterToAdd.Details.x_ms_parameter_grouping) {
+            const parameterGroupPropertyName = parameterToAdd.Details.Name;
+            const groupName = parameterToAdd.Details.x_ms_parameter_grouping;
+            parameterGroupsExpressions[groupName] =
+              (groupName in parameterGroupsExpressions
+                ? parameterGroupsExpressions[groupName]
+                : parameterGroupCreateExpression(groupName, parameterToAdd.Details.ExtendedData.GroupType))
+              + "\r\n"
+              + parameterGroupPropertyExpression(groupName, parameterGroupPropertyName);
+          }
+
+          if (parameterToAdd.Details.ExtendedData.Type) {
+            paramType = `[${parameterToAdd.Details.ExtendedData.Type}]${paramType}`;
+            if (parameterToAdd.Details.ExtendedData.HasDefaultValue) {
+              let parameterDefaultValue = "$null";
+              if (parameterToAdd.Details.ExtendedData.DefaultValue) {
+                if (typeof parameterToAdd.Details.ExtendedData.DefaultValue === "object") {
+                  parameterDefaultValue = "[NullString]::Value";
+                }
+                else if ("System.String" === parameterToAdd.Details.ExtendedData.Type) {
+                  parameterDefaultValue = `"${parameterToAdd.Details.ExtendedData.DefaultValue} "`
+                }
+                else {
+                  parameterDefaultValue = `${parameterToAdd.Details.ExtendedData.DefaultValue}`;
+                }
+              }
+
+              parameterDefaultValueOption = parameterDefaultValueString(parameterDefaultValue);
+            }
+          }
+        }
+
+        paramBlock += parameterDefString(AllParameterSetsString, ParameterAliasAttribute, ValidateSetDefinition, paramType, paramName, parameterDefaultValueOption)
+        paramHelp += helpParamStr(parameterName, parameterToAdd.Details.Description)
+      }
+      else if (parameterToAdd.Details.Containskey('Type')) {
+        paramType = "[$($parameterToAdd.Details.Type)]$paramType"
+
+        paramBlock += parameterDefString(AllParameterSetsString, ParameterAliasAttribute, ValidateSetDefinition, paramType, paramName, parameterDefaultValueOption)
+        paramHelp += helpParamStr(parameterName, parameterToAdd.Details.Description)
+      }
+      else {
+        logWarning(`Parameter '${parameterName}' does not have a corresponding parameter in the autogenerated C# code and is not an ODataQuery parameter. Leaving this parameter out of the PowerShell cmdlet '${commandName}'`);
+      }
+    }
+  }
+
+  for (const parameterGroupsExpressionEntry of Object.values(parameterGroupsExpressions)) {
+    parameterGroupsExpressionBlock += parameterGroupsExpressionEntry + "\r\n";
+  }
+
+  const oDataExpressionBlock = oDataExpression !== "" ? oDataExpressionBlockStr(oDataExpression.trim()) : "";
+
+  return {
+    paramBlock,
+    paramHelp,
+    parameterGroupsExpressionBlock,
+    oDataExpressionBlock,
+    parameterAliasMapping
+  };
+}
 
 
 // TEMPLATE
@@ -603,7 +724,7 @@ const parameterGroupPropertyExpression = (groupName: string, parameterGroupPrope
 `;
 
 const parameterDefString = (allParameterSetsString: string, parameterAliasAttribute: string, validateSetDefinition: string, paramType: string, paramName: string, parameterDefaultValueOption: string) => `
-        ${allParameterSetsString || ""}${parameterAliasAttribute || ""}${validateSetDefinition || ""} #asd
+        ${allParameterSetsString || ""}${parameterAliasAttribute || ""}${validateSetDefinition || ""}
         ${paramType}${paramName}${parameterDefaultValueOption || ""},
 `;
 
@@ -613,3 +734,9 @@ const helpParamStr = (parameterName: string, pDescription: string) => `
 `;
 
 const parameterDefaultValueString = (parameterDefaultValue: string) => ` = ${parameterDefaultValue}`;
+
+const oDataExpressionBlockStr = (oDataExpression: string) => `
+  $oDataQuery = ""
+    ${oDataExpression}
+    $oDataQuery = $oDataQuery.Trim("&")
+`;

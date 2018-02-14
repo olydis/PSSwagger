@@ -8,6 +8,27 @@
 #
 #########################################################################################
 
+function ConvertTo-HashtableFromPsCustomObject { 
+    param ( 
+        [Parameter(  
+            Position = 0,   
+            Mandatory = $true,   
+            ValueFromPipeline = $true,  
+            ValueFromPipelineByPropertyName = $true  
+        )] [object[]]$psCustomObject 
+    ); 
+    
+    process { 
+        foreach ($myPsObject in $psCustomObject) { 
+            $output = @{}; 
+            $myPsObject | Get-Member -MemberType *Property | % { 
+                $output.($_.name) = $myPsObject.($_.name); 
+            } 
+            $output; 
+        } 
+    } 
+}
+
 $tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 
@@ -1147,135 +1168,142 @@ function New-SwaggerPath {
         $synopsis = $defaultParameterSet.Synopsis        
     }
 
-    $oDataExpression = ""
-    $oDataExpressionBlock = ""
-    # Variable used to replace in function body
-    $parameterGroupsExpressionBlock = ""
-    # Variable used to store all group expressions, concatenate, then store in $parameterGroupsExpressionBlock
-    $parameterGroupsExpressions = @{}
-    $ParameterAliasMapping = @{}
 
-    $parametersToAdd.GetEnumerator() | ForEach-Object {
-        $parameterToAdd = $_.Value
-        $ValueFromPipelineString = ''
-        $ValueFromPipelineByPropertyNameString = ''
-        if ($parameterToAdd) {
-            $parameterName = $parameterToAdd.Details.Name
+    $tsResult = Eval-Ts $tsSwaggerUtils "doParameterStuff" $commandName, $parametersToAdd
+    $paramBlock = $tsResult.paramBlock
+    $paramHelp = $tsResult.paramHelp
+    $parameterGroupsExpressionBlock = $tsResult.parameterGroupsExpressionBlock
+    $oDataExpressionBlock = $tsResult.oDataExpressionBlock
+    $ParameterAliasMapping = ConvertTo-HashtableFromPsCustomObject $tsResult.parameterAliasMapping
+
+    # $oDataExpression = ""
+    # $oDataExpressionBlock = ""
+    # # Variable used to replace in function body
+    # $parameterGroupsExpressionBlock = ""
+    # # Variable used to store all group expressions, concatenate, then store in $parameterGroupsExpressionBlock
+    # $parameterGroupsExpressions = @{}
+    # $ParameterAliasMapping = @{}
+
+    # $parametersToAdd.GetEnumerator() | ForEach-Object {
+    #     $parameterToAdd = $_.Value
+    #     $ValueFromPipelineString = ''
+    #     $ValueFromPipelineByPropertyNameString = ''
+    #     if ($parameterToAdd) {
+    #         $parameterName = $parameterToAdd.Details.Name
             
-            if ($parameterToAdd.Details.Containskey('ValueFromPipeline') -and $parameterToAdd.Details.ValueFromPipeline) {
-                $ValueFromPipelineString = ', ValueFromPipeline = $true'
-            }
+    #         if ($parameterToAdd.Details.Containskey('ValueFromPipeline') -and $parameterToAdd.Details.ValueFromPipeline) {
+    #             $ValueFromPipelineString = ', ValueFromPipeline = $true'
+    #         }
 
-            if ($parameterToAdd.Details.Containskey('ValueFromPipelineByPropertyName') -and $parameterToAdd.Details.ValueFromPipelineByPropertyName) {
-                $ValueFromPipelineByPropertyNameString = ', ValueFromPipelineByPropertyName = $true'
-            }
+    #         if ($parameterToAdd.Details.Containskey('ValueFromPipelineByPropertyName') -and $parameterToAdd.Details.ValueFromPipelineByPropertyName) {
+    #             $ValueFromPipelineByPropertyNameString = ', ValueFromPipelineByPropertyName = $true'
+    #         }
 
-            $AllParameterSetsString = ''
-            foreach ($parameterSetInfoEntry in $parameterToAdd.ParameterSetInfo.GetEnumerator()) {
-                $parameterSetInfo = $parameterSetInfoEntry.Value
-                $isParamMandatory = $parameterSetInfo.Mandatory
-                $ParameterSetPropertyString = ", ParameterSetName = '$($parameterSetInfo.Name)'"
-                if ($AllParameterSetsString) {
-                    # Two tabs
-                    $AllParameterSetsString += [Environment]::NewLine + "        " + (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
-                }
-                else {
-                    $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
-                }
-            }
+    #         $AllParameterSetsString = ''
+    #         foreach ($parameterSetInfoEntry in $parameterToAdd.ParameterSetInfo.GetEnumerator()) {
+    #             $parameterSetInfo = $parameterSetInfoEntry.Value
+    #             $isParamMandatory = $parameterSetInfo.Mandatory
+    #             $ParameterSetPropertyString = ", ParameterSetName = '$($parameterSetInfo.Name)'"
+    #             if ($AllParameterSetsString) {
+    #                 # Two tabs
+    #                 $AllParameterSetsString += [Environment]::NewLine + "        " + (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
+    #             }
+    #             else {
+    #                 $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
+    #             }
+    #         }
 
-            if (-not $AllParameterSetsString) {
-                $isParamMandatory = $parameterToAdd.Details.Mandatory
-                $ParameterSetPropertyString = ""
-                $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
-            }
+    #         if (-not $AllParameterSetsString) {
+    #             $isParamMandatory = $parameterToAdd.Details.Mandatory
+    #             $ParameterSetPropertyString = ""
+    #             $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
+    #         }
 
-            $ParameterAliasAttribute = $null
-            # Parameter has Name as an alias, change the parameter name to Name and add the current parameter name as an alias.            
-            if ($parameterToAdd.Details.Containskey('Alias') -and 
-                $parameterToAdd.Details.Alias -and
-                ($parameterToAdd.Details.Alias -eq 'Name')) {
-                $ParameterAliasMapping[$parameterName] = 'Name'
-                $parameterName = 'Name'
-                $ParameterAliasAttribute = (Eval-Ts $tsTemplates "parameterAliasAttributeString" "'$parameterName'")
-            }
+    #         $ParameterAliasAttribute = $null
+    #         # Parameter has Name as an alias, change the parameter name to Name and add the current parameter name as an alias.            
+    #         if ($parameterToAdd.Details.Containskey('Alias') -and 
+    #             $parameterToAdd.Details.Alias -and
+    #             ($parameterToAdd.Details.Alias -eq 'Name')) {
+    #             $ParameterAliasMapping[$parameterName] = 'Name'
+    #             $parameterName = 'Name'
+    #             $ParameterAliasAttribute = (Eval-Ts $tsTemplates "parameterAliasAttributeString" "'$parameterName'")
+    #         }
 
-            $paramName = "`$$parameterName"
-            $ValidateSetDefinition = $null
-            if ($parameterToAdd.Details.ValidateSet) {
-                $ValidateSetDefinition = (Eval-Ts $tsTemplates "validateSetDefinitionString" $parameterToAdd.Details.ValidateSet)
-            }
+    #         $paramName = "`$$parameterName"
+    #         $ValidateSetDefinition = $null
+    #         if ($parameterToAdd.Details.ValidateSet) {
+    #             $ValidateSetDefinition = (Eval-Ts $tsTemplates "validateSetDefinitionString" $parameterToAdd.Details.ValidateSet)
+    #         }
 
-            $parameterDefaultValueOption = ""
-            $paramType = "$([Environment]::NewLine)        "
-            if ($parameterToAdd.Details.ContainsKey('ExtendedData')) {
-                if ($parameterToAdd.Details.ExtendedData.ContainsKey('IsODataParameter') -and $parameterToAdd.Details.ExtendedData.IsODataParameter) {
-                    $paramType = "[$($parameterToAdd.Details.Type)]$paramType"
-                    $oDataExpression += "    if (`$$parameterName) { `$oDataQuery += `"&```$$parameterName=`$$parameterName`" }" + [Environment]::NewLine
-                }
-                else {
-                    # Assuming you can't group ODataQuery parameters
-                    if ($parameterToAdd.Details.ContainsKey('x_ms_parameter_grouping') -and $parameterToAdd.Details.'x_ms_parameter_grouping') {
-                        $parameterGroupPropertyName = $parameterToAdd.Details.Name
-                        $groupName = $parameterToAdd.Details.'x_ms_parameter_grouping'
-                        if ($parameterGroupsExpressions.ContainsKey($groupName)) {
-                            $parameterGroupsExpression = $parameterGroupsExpressions[$groupName]
-                        }
-                        else {
-                            $parameterGroupsExpression = (Eval-Ts $tsTemplates "parameterGroupCreateExpression" $groupName, $parameterToAdd.Details.ExtendedData.GroupType)
-                        }
+    #         $parameterDefaultValueOption = ""
+    #         $paramType = "$([Environment]::NewLine)        "
+    #         if ($parameterToAdd.Details.ContainsKey('ExtendedData')) {
+    #             if ($parameterToAdd.Details.ExtendedData.ContainsKey('IsODataParameter') -and $parameterToAdd.Details.ExtendedData.IsODataParameter) {
+    #                 $paramType = "[$($parameterToAdd.Details.Type)]$paramType"
+    #                 $oDataExpression += "    if (`$$parameterName) { `$oDataQuery += `"&```$$parameterName=`$$parameterName`" }" + [Environment]::NewLine
+    #             }
+    #             else {
+    #                 # Assuming you can't group ODataQuery parameters
+    #                 if ($parameterToAdd.Details.ContainsKey('x_ms_parameter_grouping') -and $parameterToAdd.Details.'x_ms_parameter_grouping') {
+    #                     $parameterGroupPropertyName = $parameterToAdd.Details.Name
+    #                     $groupName = $parameterToAdd.Details.'x_ms_parameter_grouping'
+    #                     if ($parameterGroupsExpressions.ContainsKey($groupName)) {
+    #                         $parameterGroupsExpression = $parameterGroupsExpressions[$groupName]
+    #                     }
+    #                     else {
+    #                         $parameterGroupsExpression = (Eval-Ts $tsTemplates "parameterGroupCreateExpression" $groupName, $parameterToAdd.Details.ExtendedData.GroupType)
+    #                     }
 
-                        $parameterGroupsExpression += [Environment]::NewLine + (Eval-Ts $tsTemplates "parameterGroupPropertyExpression" $groupName, $parameterGroupPropertyName)
-                        $parameterGroupsExpressions[$groupName] = $parameterGroupsExpression
-                    }
+    #                     $parameterGroupsExpression += [Environment]::NewLine + (Eval-Ts $tsTemplates "parameterGroupPropertyExpression" $groupName, $parameterGroupPropertyName)
+    #                     $parameterGroupsExpressions[$groupName] = $parameterGroupsExpression
+    #                 }
                     
-                    if ($parameterToAdd.Details.ExtendedData.Type) {
-                        $paramType = "[$($parameterToAdd.Details.ExtendedData.Type)]$paramType"
-                        if ($parameterToAdd.Details.ExtendedData.HasDefaultValue) {
-                            if ($parameterToAdd.Details.ExtendedData.DefaultValue) {
-                                if ([NullString]::Value -eq $parameterToAdd.Details.ExtendedData.DefaultValue) {
-                                    $parameterDefaultValue = "[NullString]::Value"
-                                }
-                                elseif ("System.String" -eq $parameterToAdd.Details.ExtendedData.Type) {
-                                    $parameterDefaultValue = "`"$($parameterToAdd.Details.ExtendedData.DefaultValue)`""
-                                }
-                                else {
-                                    $parameterDefaultValue = "$($parameterToAdd.Details.ExtendedData.DefaultValue)"
-                                }
-                            }
-                            else {
-                                $parameterDefaultValue = "`$null"
-                            }
+    #                 if ($parameterToAdd.Details.ExtendedData.Type) {
+    #                     $paramType = "[$($parameterToAdd.Details.ExtendedData.Type)]$paramType"
+    #                     if ($parameterToAdd.Details.ExtendedData.HasDefaultValue) {
+    #                         if ($parameterToAdd.Details.ExtendedData.DefaultValue) {
+    #                             if ([NullString]::Value -eq $parameterToAdd.Details.ExtendedData.DefaultValue) {
+    #                                 $parameterDefaultValue = "[NullString]::Value"
+    #                             }
+    #                             elseif ("System.String" -eq $parameterToAdd.Details.ExtendedData.Type) {
+    #                                 $parameterDefaultValue = "`"$($parameterToAdd.Details.ExtendedData.DefaultValue)`""
+    #                             }
+    #                             else {
+    #                                 $parameterDefaultValue = "$($parameterToAdd.Details.ExtendedData.DefaultValue)"
+    #                             }
+    #                         }
+    #                         else {
+    #                             $parameterDefaultValue = "`$null"
+    #                         }
 
-                            $parameterDefaultValueOption = (Eval-Ts $tsTemplates "parameterDefaultValueString" $parameterDefaultValue)
-                        }
-                    }
-                }
+    #                         $parameterDefaultValueOption = (Eval-Ts $tsTemplates "parameterDefaultValueString" $parameterDefaultValue)
+    #                     }
+    #                 }
+    #             }
 
-                $paramBlock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
-                $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
-            }
-            elseif ($parameterToAdd.Details.Containskey('Type')) {
-                $paramType = "[$($parameterToAdd.Details.Type)]$paramType"
+    #             $paramBlock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
+    #             $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
+    #         }
+    #         elseif ($parameterToAdd.Details.Containskey('Type')) {
+    #             $paramType = "[$($parameterToAdd.Details.Type)]$paramType"
 
-                $paramblock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
-                $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
-            }
-            else {
-                Write-Warning ($LocalizedData.ParameterMissingFromAutoRestCode -f ($parameterName, $commandName))
-            }
-        }
-    }
+    #             $paramblock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
+    #             $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
+    #         }
+    #         else {
+    #             Write-Warning ($LocalizedData.ParameterMissingFromAutoRestCode -f ($parameterName, $commandName))
+    #         }
+    #     }
+    # }
 
+    # foreach ($parameterGroupsExpressionEntry in $parameterGroupsExpressions.GetEnumerator()) {
+    #     $parameterGroupsExpressionBlock += $parameterGroupsExpressionEntry.Value + [Environment]::NewLine
+    # }
 
-    foreach ($parameterGroupsExpressionEntry in $parameterGroupsExpressions.GetEnumerator()) {
-        $parameterGroupsExpressionBlock += $parameterGroupsExpressionEntry.Value + [Environment]::NewLine
-    }
-
-    if ($oDataExpression) {
-        $oDataExpression = $oDataExpression.Trim()
-        $oDataExpressionBlock = $executionContext.InvokeCommand.ExpandString($oDataExpressionBlockStr)
-    }
+    # if ($oDataExpression) {
+    #     $oDataExpression = $oDataExpression.Trim()
+    #     $oDataExpressionBlock = $executionContext.InvokeCommand.ExpandString($oDataExpressionBlockStr)
+    # }
 
     $paramBlock = $paramBlock.TrimEnd().TrimEnd(",")
     $commandHelp = $executionContext.InvokeCommand.ExpandString($helpDescStr)
