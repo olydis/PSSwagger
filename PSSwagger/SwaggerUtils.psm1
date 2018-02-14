@@ -8,6 +8,63 @@
 #
 #########################################################################################
 
+
+function ConvertTo-PsCustomObjectFromHashtable { 
+    param ( 
+        [Parameter(  
+            Position = 0,   
+            Mandatory = $true,   
+            ValueFromPipeline = $true,  
+            ValueFromPipelineByPropertyName = $true  
+        )] [object[]]$hashtable 
+    ); 
+    
+    begin { $i = 0; } 
+    
+    process { 
+        foreach ($myHashtable in $hashtable) { 
+            if ($myHashtable.GetType().Name -eq 'hashtable') { 
+                $output = New-Object -TypeName PsObject; 
+                Add-Member -InputObject $output -MemberType ScriptMethod -Name AddNote -Value {  
+                    Add-Member -InputObject $this -MemberType NoteProperty -Name $args[0] -Value $args[1]; 
+                }; 
+                $myHashtable.Keys | Sort-Object | % {
+                    $member = $myHashtable.$_
+                    if ($member.GetType().Name -eq "PSNoteProperty") {
+                        $member = $member.Value
+                    }
+                    $output.AddNote($_, $member);  
+                } 
+                $output; 
+            } else { 
+                Write-Warning "Index $i is not of type [hashtable]"; 
+            } 
+            $i += 1;  
+        } 
+    } 
+}
+function ConvertTo-HashtableFromPsCustomObject { 
+     param ( 
+         [Parameter(  
+             Position = 0,   
+             Mandatory = $true,   
+             ValueFromPipeline = $true,  
+             ValueFromPipelineByPropertyName = $true  
+         )] [object[]]$psCustomObject 
+     ); 
+     
+     process { 
+         foreach ($myPsObject in $psObject) { 
+             $output = @{}; 
+             $myPsObject | Get-Member -MemberType *Property | % { 
+                 $output.($_.name) = $myPsObject.($_.name); 
+             } 
+             $output; 
+         } 
+     } 
+}
+
+$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
@@ -23,25 +80,6 @@ $script:CSharpCodeNamerLoadAttempted = $false
 
 $script:IgnoredAutoRestParameters = @(@('Modeler', 'm'), @('AddCredentials'), @('CodeGenerator', 'g'))
 $script:PSSwaggerDefaultNamespace = "Microsoft.PowerShell"
-$script:CSharpReservedWords = @(
-    'abstract', 'as', 'async', 'await', 'base',
-    'bool', 'break', 'byte', 'case', 'catch',
-    'char', 'checked', 'class', 'const', 'continue',
-    'decimal', 'default', 'delegate', 'do', 'double',
-    'dynamic', 'else', 'enum', 'event', 'explicit',
-    'extern', 'false', 'finally', 'fixed', 'float',
-    'for', 'foreach', 'from', 'global', 'goto',
-    'if', 'implicit', 'in', 'int', 'interface',
-    'internal', 'is', 'lock', 'long', 'namespace',
-    'new', 'null', 'object', 'operator', 'out',
-    'override', 'params', 'private', 'protected', 'public',
-    'readonly', 'ref', 'return', 'sbyte', 'sealed',
-    'short', 'sizeof', 'stackalloc', 'static', 'string',
-    'struct', 'switch', 'this', 'throw', 'true',
-    'try', 'typeof', 'uint', 'ulong', 'unchecked',
-    'unsafe', 'ushort', 'using', 'virtual', 'void',
-    'volatile', 'while', 'yield', 'var'
-)
 
 
 function ConvertTo-SwaggerDictionary {
@@ -1262,120 +1300,6 @@ function Get-PathCommandName
     $res = Eval-Ts $tsSwaggerUtils "getPathCommandName" $OperationId
     $res = $res | ForEach { $ht = @{}; $_.psobject.properties | ForEach { $ht[$_.Name] = $_.Value }; return $ht }
     return $res
-
-    # $opIdValues = $OperationId  -split "_",2
-    
-    # if($opIdValues -and ($opIdValues.Count -eq 2)) {
-    #     $cmdNoun = (Get-SingularizedValue -Name $opIdValues[0])
-    #     $cmdVerb = $opIdValues[1]
-    # }
-    # else {
-    #     # 
-    #     $cmdNoun = ''
-    #     $cmdVerb = Get-SingularizedValue -Name $OperationId
-    # }
-
-    # if (-not (Get-Verb -Verb $cmdVerb))
-    # {
-    #     $UnapprovedVerb = $cmdVerb
-    #     $message = $LocalizedData.UnapprovedVerb -f ($UnapprovedVerb)
-    #     Write-Verbose $message
-        
-    #     if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $cmdVerb)
-    #     {
-    #         # This condition happens when there aren't any suffixes
-    #         $cmdVerb = Eval-Ts $tsSwaggerUtils "MapVerb" $cmdVerb
-    #         $cmdVerb | ForEach-Object {
-    #             $message = $LocalizedData.ReplacedVerb -f ($_, $UnapprovedVerb)
-    #             Write-Verbose -Message $message
-    #         }
-    #     }
-    #     else
-    #     {
-    #         # This condition happens in cases like: CreateSuffix, CreateOrUpdateSuffix
-    #         $longestVerbMatch = $null
-    #         $currentVerbCandidate = ''
-    #         $firstWord = ''
-    #         $firstWordStarted = $false
-    #         $buildFirstWord = $false
-    #         $firstWordEnd = -1
-    #         $verbMatchEnd = -1
-    #         for($i = 0; $i -lt $UnapprovedVerb.Length; $i++) {
-    #             # Add the start condition of the first word so that the end condition is easier
-    #             if (-not $firstWordStarted) {
-    #                 $firstWordStarted = $true
-    #                 $buildFirstWord = $true
-    #             } elseif ($buildFirstWord -and ([int]$UnapprovedVerb[$i] -ge 65) -and ([int]$UnapprovedVerb[$i] -le 90)) {
-    #                 # Stop building the first word when we encounter another capital letter
-    #                 $buildFirstWord = $false
-    #                 $firstWordEnd = $i
-    #             }
-
-    #             if ($buildFirstWord) {
-    #                 $firstWord += $UnapprovedVerb[$i]
-    #             }
-
-    #             # If we're still running along the trie just fine, keep checking the next letter
-    #             $currentVerbCandidate += $UnapprovedVerb[$i]
-    #             if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $currentVerbCandidate) {
-    #                 # The latest verb match is also the longest verb match
-    #                 $longestVerbMatch = $currentVerbCandidate
-    #                 $verbMatchEnd = $i+1
-    #             }
-    #         }
-
-    #         if ($longestVerbMatch) {
-    #             $beginningOfSuffix = $verbMatchEnd
-    #             $cmdVerb = $longestVerbMatch
-    #         } else {
-    #             $beginningOfSuffix = $firstWordEnd
-    #             $cmdVerb = $firstWord
-    #         }
-
-    #         if (Eval-Ts $tsSwaggerUtils "ExistsVerb" $cmdVerb) { 
-    #             $cmdVerb = Eval-Ts $tsSwaggerUtils "MapVerb" $cmdVerb
-    #         }
-
-    #         if (-1 -ne $beginningOfSuffix) {
-    #             # This is still empty when a verb match is found that is the entire string, but it might not be worth checking for that case and skipping the below operation
-    #             $cmdNounSuffix = $UnapprovedVerb.Substring($beginningOfSuffix)
-    #             # Add command noun suffix only when the current noun doesn't contain it or vice-versa. 
-    #             if(-not $cmdNoun) {
-    #                 $cmdNoun = Get-PascalCasedString -Name $cmdNounSuffix
-    #             }                
-    #             elseif(-not $cmdNounSuffix.StartsWith('By', [System.StringComparison]::OrdinalIgnoreCase)) {
-    #                 if(($cmdNoun -notmatch $cmdNounSuffix) -and ($cmdNounSuffix -notmatch $cmdNoun)) {
-    #                     $cmdNoun = $cmdNoun + (Get-PascalCasedString -Name $cmdNounSuffix)
-    #                 }
-    #                 elseif($cmdNounSuffix -match $cmdNoun) {
-    #                     $cmdNoun = $cmdNounSuffix
-    #                 }
-    #             }
-    #         }
-    #     }
-    # }
-
-    # # Singularize command noun
-    # if($cmdNoun) {
-    #     $cmdNoun = Get-SingularizedValue -Name $cmdNoun
-    # }
-
-    # $cmdletInfos = $cmdVerb | ForEach-Object {
-    #     $Verb = Get-PascalCasedString -Name $_
-    #     if($cmdNoun){
-    #         $CommandName = "$Verb-$cmdNoun"
-    #     } else {
-    #         $CommandName = Get-SingularizedValue -Name $Verb
-    #     }
-    #     $cmdletInfo = @{}
-    #     $cmdletInfo['name'] = $CommandName
-    #     $cmdletInfo
-    #     Write-Verbose -Message ($LocalizedData.UsingCmdletNameForSwaggerPathOperation -f ($CommandName, $OperationId))
-    # }
-
-    # Write-Warning "DUUUUUUUUUUUUUUUUUUMP $($cmdletInfos | ConvertTo-JSON)"
-
-    # return $cmdletInfos
 }
 
 function Get-PathFunctionBody
@@ -1636,86 +1560,90 @@ function Get-OutputType
         $DefinitionList
     )
 
-    $outputTypeBlock = $null
-    $outputType = $null
-    if(Get-member -inputobject $schema -name '$ref')
-    {
-        $ref = $schema.'$ref'
-        $RefParts = $ref -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-        if(($RefParts.Count -ge 3) -and ($RefParts[-2] -eq 'definitions'))
-        {
-            $key = Get-CSharpModelName -Name $RefParts[-1]
-            if ($definitionList.ContainsKey($key))
-            {
-                $definition = ($definitionList[$key]).Value
-                if(Get-Member -InputObject $definition -name 'properties')
-                {
-                    $fullPathDataType = ""
-                    if(Get-HashtableKeyCount -Hashtable $definition.properties.PSObject.Properties)
-                    {
-                        $defProperties = $definition.properties
+    $defList = ConvertTo-PsCustomObjectFromHashtable $DefinitionList
+    Write-Warning "FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"
+    return (Eval-Ts $tsSwaggerUtils "getOutputType" $Schema, $ModelsNamespace, $defList)
 
-                        # If this data type is actually a collection of another $ref 
-                        if(Get-member -InputObject $defProperties -Name 'value')
-                        {
-                            $defValue = $defProperties.value
-                            $outputValueType = ""
+    # $outputTypeBlock = $null
+    # $outputType = $null
+    # if(Get-member -inputobject $schema -name '$ref')
+    # {
+    #     $ref = $schema.'$ref'
+    #     $RefParts = $ref -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
+    #     if(($RefParts.Count -ge 3) -and ($RefParts[-2] -eq 'definitions'))
+    #     {
+    #         $key = Get-CSharpModelName -Name $RefParts[-1]
+    #         if ($definitionList.ContainsKey($key))
+    #         {
+    #             $definition = ($definitionList[$key]).Value
+    #             if(Get-Member -InputObject $definition -name 'properties')
+    #             {
+    #                 $fullPathDataType = ""
+    #                 if(Get-HashtableKeyCount -Hashtable $definition.properties.PSObject.Properties)
+    #                 {
+    #                     $defProperties = $definition.properties
+
+    #                     # If this data type is actually a collection of another $ref 
+    #                     if(Get-member -InputObject $defProperties -Name 'value')
+    #                     {
+    #                         $defValue = $defProperties.value
+    #                         $outputValueType = ""
                             
-                            # Iff the value has items with $ref nested properties,
-                            # this is a collection and hence we need to find the type of collection
+    #                         # Iff the value has items with $ref nested properties,
+    #                         # this is a collection and hence we need to find the type of collection
 
-                            if((Get-Member -InputObject $defValue -Name 'items') -and 
-                                (Get-Member -InputObject $defValue.items -Name '$ref'))
-                            {
-                                $defRef = $defValue.items.'$ref'
-                                $DefRefParts = $defRef -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-                                if(($DefRefParts.Count -ge 3) -and ($DefRefParts[-2] -eq 'definitions'))
-                                {
-                                    $ReferenceTypeName = $DefRefParts[-1]
-                                    $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeName
-                                    $fullPathDataType = "$ModelsNamespace.$ReferenceTypeName"
-                                }
-                                if(Get-member -InputObject $defValue -Name 'type') 
-                                {
-                                    $defType = $defValue.type
-                                    switch ($defType) 
-                                    {
-                                        "array" { $outputValueType = '[]' }
-                                        Default {
-                                            $exceptionMessage = $LocalizedData.DataTypeNotImplemented -f ($defType, $ref)
-                                            throw ([System.NotImplementedException] $exceptionMessage)
-                                        }
-                                    }
-                                }
+    #                         if((Get-Member -InputObject $defValue -Name 'items') -and 
+    #                             (Get-Member -InputObject $defValue.items -Name '$ref'))
+    #                         {
+    #                             $defRef = $defValue.items.'$ref'
+    #                             $DefRefParts = $defRef -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
+    #                             if(($DefRefParts.Count -ge 3) -and ($DefRefParts[-2] -eq 'definitions'))
+    #                             {
+    #                                 $ReferenceTypeName = $DefRefParts[-1]
+    #                                 $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeName
+    #                                 $fullPathDataType = "$ModelsNamespace.$ReferenceTypeName"
+    #                             }
+    #                             if(Get-member -InputObject $defValue -Name 'type') 
+    #                             {
+    #                                 $defType = $defValue.type
+    #                                 switch ($defType) 
+    #                                 {
+    #                                     "array" { $outputValueType = '[]' }
+    #                                     Default {
+    #                                         $exceptionMessage = $LocalizedData.DataTypeNotImplemented -f ($defType, $ref)
+    #                                         throw ([System.NotImplementedException] $exceptionMessage)
+    #                                     }
+    #                                 }
+    #                             }
 
-                                if($outputValueType -and $fullPathDataType) {$fullPathDataType = $fullPathDataType + " " + $outputValueType}
-                            }
-                            else
-                            { # if this datatype has value, but no $ref and items
-                                $fullPathDataType = "$ModelsNamespace.$key"
-                            }
-                        }
-                        else
-                        { # if this datatype is not a collection of another $ref
-                            $fullPathDataType = "$ModelsNamespace.$key"
-                        }
-                    }
+    #                             if($outputValueType -and $fullPathDataType) {$fullPathDataType = $fullPathDataType + " " + $outputValueType}
+    #                         }
+    #                         else
+    #                         { # if this datatype has value, but no $ref and items
+    #                             $fullPathDataType = "$ModelsNamespace.$key"
+    #                         }
+    #                     }
+    #                     else
+    #                     { # if this datatype is not a collection of another $ref
+    #                         $fullPathDataType = "$ModelsNamespace.$key"
+    #                     }
+    #                 }
 
-                    if($fullPathDataType)
-                    {
-                        $fullPathDataType = $fullPathDataType.Replace('[','').Replace(']','').Trim()
-                        $outputType = $fullPathDataType
-                        $outputTypeBlock = $executionContext.InvokeCommand.ExpandString($outputTypeStr)
-                    }
-                }
-            }
-        }
-    }
+    #                 if($fullPathDataType)
+    #                 {
+    #                     $fullPathDataType = $fullPathDataType.Replace('[','').Replace(']','').Trim()
+    #                     $outputType = $fullPathDataType
+    #                     $outputTypeBlock = (Eval-Ts $tsTemplates "outputTypeStr" $fullPathDataType)
+    #                 }
+    #             }
+    #         }
+    #     }
+    # }
 
-    return @{
-        OutputType      = $outputType
-        OutputTypeBlock = $outputTypeBlock
-    }
+    # return @{
+    #     OutputType      = $outputType
+    #     OutputTypeBlock = $outputTypeBlock
+    # }
 }
 
 <#
@@ -1887,17 +1815,7 @@ function Get-CSharpModelName
         $Name
     )
 
-    # Below logic is as per AutoRest
-    $Name = $Name -replace '[[]]','Sequence'
-    # Remove special characters
-    $Name = $Name -replace '[^a-zA-Z0-9_-]',''
-
-    # AutoRest appends 'Model' to the definition name when it is a C# reserved word.
-    if($script:CSharpReservedWords -contains $Name) {        
-        $Name += 'Model'
-    }
-
-    return Get-PascalCasedString -Name $Name
+    return (Eval-Ts $tsSwaggerUtils "getCSharpModelName" $Name)
 }
 
 <# Create an object from an external dependency with possible type name changes. Optionally resolve the external dependency using a delegate.

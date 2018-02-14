@@ -16,17 +16,6 @@ $helpDescStr = @'
     $description
 '@
 
-$parameterAttributeString = '[Parameter(Mandatory = $isParamMandatory$ValueFromPipelineByPropertyNameString$ValueFromPipelineString$ParameterSetPropertyString)]'
-
-$parameterDefString = @'
-    
-        $AllParameterSetsString$ParameterAliasAttribute$ValidateSetDefinition
-        $paramType$paramName$parameterDefaultValueOption,
-
-'@
-
-$parameterDefaultValueString = ' = $parameterDefaultValue'
-
 $DynamicAssemblyGenerationBlock = @'
 `$dllFullName = Join-Path -Path `$ClrPath -ChildPath '$DllFileName'
 if(-not (Test-Path -Path `$dllFullName -PathType Leaf)) {
@@ -133,27 +122,12 @@ function $commandName
 }
 '@
 
-$helpParamStr = @'
-
-.PARAMETER $parameterName
-    $pDescription
-
-'@
-
 $oDataExpressionBlockStr = @'
 
 
     `$oDataQuery = ""
     $oDataExpression
     `$oDataQuery = `$oDataQuery.Trim("&")
-'@
-
-$parameterGroupCreateExpression = @'
-`$$groupName = New-Object -TypeName $fullGroupName
-'@
-
-$parameterGroupPropertyExpression = @'
-    if (`$PSBoundParameters.ContainsKey('$parameterGroupPropertyName')) { `$$groupName.$parameterGroupPropertyName = `$$parameterGroupPropertyName }
 '@
 
 $constructFlattenedParameter = @'
@@ -264,7 +238,7 @@ $additionalConditionStart$methodBlock$additionalConditionEnd
 
 $parameterSetBasedMethodStrElseIfCase = @'
  elseif ($ParameterSetConditionsStr) {
-$additionalConditionStart$methodBlock$additionalConditionEnd
+# $additionalConditionStart$methodBlock$additionalConditionEnd
     }
 '@
 
@@ -423,16 +397,6 @@ $PagingOperationCallCmdlet = @'
 $Cmdlet $CmdletArgs
 '@
 
-$ValidateSetDefinitionString = @'
-
-        [ValidateSet($ValidateSetString)]
-'@
-
-$ParameterAliasAttributeString = @'
-
-        [Alias($AliasString)]
-'@
-
 $successReturn = @'
 Write-Verbose "Operation completed with return code: `$responseStatusCode."
                         $result = $TaskResult.Result.Body
@@ -456,11 +420,6 @@ $failCase = @'
                     {`$responseStatusCode} {
                         $responseStatusValue {$failureDescription}
                     }
-'@
-
-$outputTypeStr = @'
-[OutputType([$fullPathDataType])]
-    
 '@
 
 $createObjectStr = @'

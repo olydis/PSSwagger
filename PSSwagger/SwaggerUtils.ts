@@ -288,11 +288,17 @@ function getPathCommandName(operationId: string): any {
   let cmdVerb = opIdValues.length === 2 ? opIdValues[1] : getSingularizedValue(operationId);
   let cmdVerbs: string[] = [cmdVerb];
 
-  if (!(cmdVerb in cmdVerbMap_GetVerb)) {
+  if (!Object
+    .keys(cmdVerbMap_GetVerb)
+    .map(v => v.toLowerCase())
+    .includes(cmdVerb.toLowerCase())) {
     const unapprovedVerb = cmdVerb;
     logVerbose(`Verb '${unapprovedVerb}' not an approved verb.`);
 
-    if (ExistsVerb(cmdVerb)) {
+    if (Object
+      .keys(cmdVerbMap_Custom)
+      .map(v => v.toLowerCase())
+      .includes(cmdVerb.toLowerCase())) {
       // This condition happens when there aren't any suffixes
       cmdVerbs = MapVerb(cmdVerb);
       for (const v of cmdVerbs)
@@ -334,11 +340,15 @@ function getPathCommandName(operationId: string): any {
       const beginningOfSuffix = longestVerbMatch ? verbMatchEnd : firstWordEnd;
       cmdVerb = longestVerbMatch ? longestVerbMatch : firstWord;
 
-      if (ExistsVerb(cmdVerb)) {
+      if (Object
+        .keys(cmdVerbMap_Custom)
+        .map(v => v.toLowerCase())
+        .includes(cmdVerb.toLowerCase())) {
         cmdVerbs = MapVerb(cmdVerb);
       } else {
         cmdVerbs = [cmdVerb];
       }
+      console.log(cmdVerbs);
 
       if (-1 !== beginningOfSuffix) {
         // This is still empty when a verb match is found that is the entire string, but it might not be worth checking for that case and skipping the below operation
@@ -353,7 +363,7 @@ function getPathCommandName(operationId: string): any {
             !cmdNounSuffix.toLowerCase().includes(cmdNoun.toLowerCase())) {
             cmdNoun += getPascalCasedString(cmdNounSuffix);
           }
-          else if (cmdNounSuffix.includes(cmdNoun)) {
+          else if (cmdNounSuffix.toLowerCase().includes(cmdNoun.toLowerCase())) {
             cmdNoun = cmdNounSuffix;
           }
         }
@@ -374,3 +384,232 @@ function getPathCommandName(operationId: string): any {
   });
   return cmdletInfos;
 }
+
+function logDebug(message: string) { }
+
+const csharpReservedWords = [
+  'abstract', 'as', 'async', 'await', 'base',
+  'bool', 'break', 'byte', 'case', 'catch',
+  'char', 'checked', 'class', 'const', 'continue',
+  'decimal', 'default', 'delegate', 'do', 'double',
+  'dynamic', 'else', 'enum', 'event', 'explicit',
+  'extern', 'false', 'finally', 'fixed', 'float',
+  'for', 'foreach', 'from', 'global', 'goto',
+  'if', 'implicit', 'in', 'int', 'interface',
+  'internal', 'is', 'lock', 'long', 'namespace',
+  'new', 'null', 'object', 'operator', 'out',
+  'override', 'params', 'private', 'protected', 'public',
+  'readonly', 'ref', 'return', 'sbyte', 'sealed',
+  'short', 'sizeof', 'stackalloc', 'static', 'string',
+  'struct', 'switch', 'this', 'throw', 'true',
+  'try', 'typeof', 'uint', 'ulong', 'unchecked',
+  'unsafe', 'ushort', 'using', 'virtual', 'void',
+  'volatile', 'while', 'yield', 'var'];
+function getCSharpModelName(name: string): string {
+  name = name.replace(/\[\]/g, 'Sequence');
+  name = name.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (csharpReservedWords.includes(name.toLowerCase())) {
+    name += "Model";
+  }
+  return getPascalCasedString(name);
+}
+
+function getOutputType(schema: any, modelsNamespace: string, definitionList: any): { outputType: string | null, outputTypeBlock: string | null } {
+  let outputTypeBlock: any = null;
+  let outputType: any = null;
+
+  if (schema['$ref']) {
+    const ref = schema['$ref'];
+    const refParts = ref.split('/');
+    if (refParts.length >= 3 && refParts[refParts.length - 2] == "definitions") {
+      const key = getCSharpModelName(refParts[refParts.length - 1]);
+      if (key in definitionList) {
+        const definition = definitionList[key];
+        const defProperties = definition.properties;
+        let fullPathDataType: string | null = null;
+
+        if (defProperties) {
+          // If this data type is actually a collection of another $ref
+          const defValue = defProperties.value;
+          if (defValue) {
+            let outputValueType = "";
+
+            // Iff the value has items with $ref nested properties,
+            // this is a collection and hence we need to find the type of collection
+            const defRef = defValue.items && defValue.items["$ref"];
+            if (defRef) {
+              const defRefParts = ref.split('/');
+              if (defRefParts.length >= 3 && defRefParts[defRefParts.length - 2] == "definitions") {
+                let referenceTypeName = getCSharpModelName(defRefParts[defRefParts.length - 1]);
+                fullPathDataType = `${modelsNamespace}.${referenceTypeName}`;
+              }
+              const defType = defValue.type;
+              if (defType) {
+                if (defType === "array") outputValueType = "[]";
+                else throw new Error(`Please get an implementation of '${defType}' for '${ref}'`);
+              }
+
+              if (outputValueType && fullPathDataType) {
+                fullPathDataType += " " + outputValueType;
+              }
+            }
+          }
+          if (fullPathDataType === null) {
+            // if this datatype is not a collection of another $ref
+            fullPathDataType = `${modelsNamespace}.${key}`;
+          }
+        }
+
+        if (fullPathDataType) {
+          fullPathDataType = fullPathDataType.replace(/\[|\]/g, '').trim();
+          outputType = fullPathDataType;
+          outputTypeBlock = outputTypeStr(fullPathDataType);
+        }
+      }
+    }
+  }
+
+  return { outputType, outputTypeBlock };
+}
+
+
+// function getAzureResourceIdParameters(
+//   jsonPathItemObject: any,
+//   resourceId: string,
+//   namespace: string,
+//   models: string,
+//   definitionList: any
+// ): any {
+//   const getPathItemObject = jsonPathItemObject[Object.keys(jsonPathItemObject).filter(x => x.toLowerCase() === "get")[0]];
+//   if (!getPathItemObject) {
+//     logDebug(`Get operation not available in ${resourceId}.`);
+//     return;
+//   }
+
+//   const tokens = resourceId.split('/').filter(x => x !== "");
+//   if (tokens.length < 8) {
+//     logDebug(`The specified endpoint '${resourceId}' is not a valid resource identifier.`);
+//     return;
+//   }
+//   const resourceIdParameters = tokens
+//     .filter(t => t.startsWith('{') && t.endsWith('}'))
+//     .map(t => t.slice(1, -1))
+//     .filter(t => t.toLowerCase() !== "subscriptionid");
+//   if (tokens[tokens.length - 1] !== `{${resourceIdParameters[resourceIdParameters.length - 1]}}`) {
+//     return;
+//   }
+
+//   const responses = getPathItemObject.responses;
+//   if (!responses) {
+//     return;
+//   }
+
+//   const getResponseParams = { responses, namespace, models, definitionList };
+
+// }
+
+// function getResponse(responses: any, namespace: string, models: string, definitionList: any): any {
+//   let outputTypeFlag = false;
+//   let responseBody = "";
+//   let outputType: ???= null;
+//   let outputTypeBlock: ???= null;
+//   let failWithDesc = "";
+
+//   for (const key of Object.keys(responses).map(x => +x)) {
+//     const responseStatusValue = `'${key}'`;
+//     const value = responses[key];
+
+//     // handle success
+//     if (200 <= key && key < 300) {
+//       if (!outputTypeFlag && value.schema) {
+//         // Add the [OutputType] for the function
+
+//       }
+//     }
+//   }
+
+//   $responses | ForEach - Object {
+
+//     switch ($_.Name) {
+//       # Handle Success
+//     { 200..299 - contains $_ } {
+//       if (-not $outputTypeFlag - and(Get - member - inputobject $value - name "schema"))
+//       {
+//         # Add the[OutputType] for the function
+//                     $OutputTypeParams = @{
+//             "schema"  = $value.schema
+//                         "ModelsNamespace" = "$NameSpace.$Models"
+//                         "definitionList" = $definitionList
+//           }
+
+//         $outputTypeResult = Get - OutputType @OutputTypeParams
+//         $outputTypeBlock = $outputTypeResult.OutputTypeBlock
+//         $outputType = $outputTypeResult.OutputType
+//         $outputTypeFlag = $true
+//       }
+//     }
+//     # Handle Client Error
+//     { 400..499 - contains $_ } {
+//       if ($Value.description) {
+//         $failureDescription = "Write-Error 'CLIENT ERROR: " + $value.description + "'"
+//         $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
+//       }
+//     }
+//     # Handle Server Error
+//     { 500..599 - contains $_ } {
+//       if ($Value.description) {
+//         $failureDescription = "Write-Error 'SERVER ERROR: " + $value.description + "'"
+//         $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
+//       }
+//     }
+//   }
+// }
+
+// $responseBody += $executionContext.InvokeCommand.ExpandString($responseBodySwitchCase)
+
+// return @{
+//   ResponseBody    = $responseBody
+//         OutputType      = $OutputType
+//         OutputTypeBlock = $OutputTypeBlock
+// }
+// }
+
+
+
+
+
+// TEMPLATE
+const outputTypeStr = (fullPathDataType: string): string => `
+        [OutputType([${fullPathDataType}])]
+`;
+
+const parameterAttributeString = (isParamMandatory: boolean, valueFromPipelineByPropertyNameString: string, valueFromPipelineString: string, parameterSetPropertyString: string): string =>
+  `[Parameter(Mandatory = ${isParamMandatory}${valueFromPipelineByPropertyNameString}${valueFromPipelineString}${parameterSetPropertyString})]`;
+
+const parameterAliasAttributeString = (aliasString: string) => `
+        [Alias(${aliasString})]
+`;
+
+const validateSetDefinitionString = (validateSetString: string) => `
+        [ValidateSet(${validateSetString})]
+`;
+
+const parameterGroupCreateExpression = (groupName: string, fullGroupName: string) => `
+$${groupName} = New-Object -TypeName ${fullGroupName}
+`;
+
+const parameterGroupPropertyExpression = (groupName: string, parameterGroupPropertyName: string) => `
+    if ($PSBoundParameters.ContainsKey('${parameterGroupPropertyName}')) { $${groupName}.${parameterGroupPropertyName} = $${parameterGroupPropertyName} }
+`;
+
+const parameterDefString = (allParameterSetsString: string, parameterAliasAttribute: string, validateSetDefinition: string, paramType: string, paramName: string, parameterDefaultValueOption: string) => `
+        ${allParameterSetsString || ""}${parameterAliasAttribute || ""}${validateSetDefinition || ""} #asd
+        ${paramType}${paramName}${parameterDefaultValueOption || ""},
+`;
+
+const helpParamStr = (parameterName: string, pDescription: string) => `
+.PARAMETER ${parameterName}
+    ${pDescription}
+`;
+
+const parameterDefaultValueString = (parameterDefaultValue: string) => ` = ${parameterDefaultValue}`;

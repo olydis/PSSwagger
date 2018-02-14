@@ -90,14 +90,18 @@ function Eval-Ts {
     [CmdletBinding()]
     Param ($code, $func, [object[]] $args)
     PROCESS {
-        If (($args -eq $null) -or (-NOT ($args.GetType().Name -eq "Object[]"))) {
+        $obj = New-Object PSObject
+        $obj | Add-Member Noteproperty args $args
+        $args = $obj | ConvertTo-JSON -Compress -Depth 100
+        If (-not $args.StartsWith('{"args":[')) {
             $list = New-Object "System.Collections.ArrayList"
             $list.Add($args)
             $args = $list
+
+            $obj = New-Object PSObject
+            $obj | Add-Member Noteproperty args $args
+            $args = $obj | ConvertTo-JSON -Compress -Depth 100
         }
-        $obj = New-Object PSObject
-        $obj | Add-Member Noteproperty args $args
-        $args = $obj | ConvertTo-JSON -Compress
         Write-Warning "TS invoke start: $func($args)"
         $res = [NodeTs]::Eval($code, $func, $args)
         Write-Warning "TS invoke end: $res"

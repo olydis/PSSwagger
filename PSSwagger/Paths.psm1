@@ -8,10 +8,14 @@
 #
 #########################################################################################
 
+$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
+$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
+
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath SwaggerUtils.psm1) -DisableNameChecking
 . "$PSScriptRoot\PSSwagger.Constants.ps1" -Force
+. "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 
 function Get-SwaggerSpecPathInfo {
@@ -1150,6 +1154,7 @@ function New-SwaggerPath {
     # Variable used to store all group expressions, concatenate, then store in $parameterGroupsExpressionBlock
     $parameterGroupsExpressions = @{}
     $ParameterAliasMapping = @{}
+
     $parametersToAdd.GetEnumerator() | ForEach-Object {
         $parameterToAdd = $_.Value
         $ValueFromPipelineString = ''
@@ -1172,17 +1177,17 @@ function New-SwaggerPath {
                 $ParameterSetPropertyString = ", ParameterSetName = '$($parameterSetInfo.Name)'"
                 if ($AllParameterSetsString) {
                     # Two tabs
-                    $AllParameterSetsString += [Environment]::NewLine + "        " + $executionContext.InvokeCommand.ExpandString($parameterAttributeString)
+                    $AllParameterSetsString += [Environment]::NewLine + "        " + (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
                 }
                 else {
-                    $AllParameterSetsString = $executionContext.InvokeCommand.ExpandString($parameterAttributeString)
+                    $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
                 }
             }
 
             if (-not $AllParameterSetsString) {
                 $isParamMandatory = $parameterToAdd.Details.Mandatory
                 $ParameterSetPropertyString = ""
-                $AllParameterSetsString = $executionContext.InvokeCommand.ExpandString($parameterAttributeString)
+                $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
             }
 
             $ParameterAliasAttribute = $null
@@ -1191,16 +1196,14 @@ function New-SwaggerPath {
                 $parameterToAdd.Details.Alias -and
                 ($parameterToAdd.Details.Alias -eq 'Name')) {
                 $ParameterAliasMapping[$parameterName] = 'Name'
-                $AliasString = "'$parameterName'"
                 $parameterName = 'Name'
-                $ParameterAliasAttribute = $executionContext.InvokeCommand.ExpandString($ParameterAliasAttributeString)
+                $ParameterAliasAttribute = (Eval-Ts $tsTemplates "parameterAliasAttributeString" "'$parameterName'")
             }
 
             $paramName = "`$$parameterName"
             $ValidateSetDefinition = $null
             if ($parameterToAdd.Details.ValidateSet) {
-                $ValidateSetString = $parameterToAdd.Details.ValidateSet
-                $ValidateSetDefinition = $executionContext.InvokeCommand.ExpandString($ValidateSetDefinitionString)
+                $ValidateSetDefinition = (Eval-Ts $tsTemplates "validateSetDefinitionString" $parameterToAdd.Details.ValidateSet)
             }
 
             $parameterDefaultValueOption = ""
@@ -1215,15 +1218,14 @@ function New-SwaggerPath {
                     if ($parameterToAdd.Details.ContainsKey('x_ms_parameter_grouping') -and $parameterToAdd.Details.'x_ms_parameter_grouping') {
                         $parameterGroupPropertyName = $parameterToAdd.Details.Name
                         $groupName = $parameterToAdd.Details.'x_ms_parameter_grouping'
-                        $fullGroupName = $parameterToAdd.Details.ExtendedData.GroupType
                         if ($parameterGroupsExpressions.ContainsKey($groupName)) {
                             $parameterGroupsExpression = $parameterGroupsExpressions[$groupName]
                         }
                         else {
-                            $parameterGroupsExpression = $executionContext.InvokeCommand.ExpandString($parameterGroupCreateExpression)
+                            $parameterGroupsExpression = (Eval-Ts $tsTemplates "parameterGroupCreateExpression" $groupName, $parameterToAdd.Details.ExtendedData.GroupType)
                         }
 
-                        $parameterGroupsExpression += [Environment]::NewLine + $executionContext.InvokeCommand.ExpandString($parameterGroupPropertyExpression)
+                        $parameterGroupsExpression += [Environment]::NewLine + (Eval-Ts $tsTemplates "parameterGroupPropertyExpression" $groupName, $parameterGroupPropertyName)
                         $parameterGroupsExpressions[$groupName] = $parameterGroupsExpression
                     }
                     
@@ -1245,27 +1247,26 @@ function New-SwaggerPath {
                                 $parameterDefaultValue = "`$null"
                             }
 
-                            $parameterDefaultValueOption = $executionContext.InvokeCommand.ExpandString($parameterDefaultValueString)
+                            $parameterDefaultValueOption = (Eval-Ts $tsTemplates "parameterDefaultValueString" $parameterDefaultValue)
                         }
                     }
                 }
 
-                $paramBlock += $executionContext.InvokeCommand.ExpandString($parameterDefString)
-                $pDescription = $parameterToAdd.Details.Description
-                $paramHelp += $executionContext.InvokeCommand.ExpandString($helpParamStr)
+                $paramBlock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
+                $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
             }
             elseif ($parameterToAdd.Details.Containskey('Type')) {
                 $paramType = "[$($parameterToAdd.Details.Type)]$paramType"
 
-                $paramblock += $executionContext.InvokeCommand.ExpandString($parameterDefString)
-                $pDescription = $parameterToAdd.Details.Description
-                $paramHelp += $executionContext.InvokeCommand.ExpandString($helpParamStr)
+                $paramblock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
+                $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $parameterToAdd.Details.Description)
             }
             else {
                 Write-Warning ($LocalizedData.ParameterMissingFromAutoRestCode -f ($parameterName, $commandName))
             }
         }
     }
+
 
     foreach ($parameterGroupsExpressionEntry in $parameterGroupsExpressions.GetEnumerator()) {
         $parameterGroupsExpressionBlock += $parameterGroupsExpressionEntry.Value + [Environment]::NewLine
@@ -1326,7 +1327,7 @@ function New-SwaggerPath {
     $body = $bodyObject.Body
     if ($PSCmdletOutputItemType) {
         $fullPathDataType = $PSCmdletOutputItemType
-        $outputTypeBlock = $executionContext.InvokeCommand.ExpandString($outputTypeStr)
+        $outputTypeBlock = (Eval-Ts $tsTemplates "outputTypeStr" $fullPathDataType)
     }
     else {
         $outputTypeBlock = $bodyObject.OutputTypeBlock        

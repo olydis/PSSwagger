@@ -437,7 +437,7 @@ Describe "Tests for New-PSSwaggerModule with Swagger spec and its .psmeta.json f
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 
     Context "Validate extended cmdlet name using .psmeta.json" {

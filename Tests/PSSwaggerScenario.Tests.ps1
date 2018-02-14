@@ -53,7 +53,7 @@ Describe "Basic API" -Tag ScenarioTest {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -132,7 +132,7 @@ Describe "All Operations: Basic" -Tag ScenarioTest {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -177,7 +177,7 @@ Describe "Get/List tests" -Tag ScenarioTest {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -238,7 +238,7 @@ Describe "Optional parameter tests" -Tag ScenarioTest {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -443,7 +443,7 @@ Describe "ParameterTypes tests" -Tag @('ParameterTypes', 'ScenarioTest') {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -564,7 +564,7 @@ Describe "AzureExtensions" -Tag @('AzureExtension', 'ScenarioTest') {
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -706,7 +706,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-Response -Credential $creds -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -723,7 +723,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-ResponseUnchallenged -Credential $creds -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -740,7 +740,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 { Get-Response -Credential $creds -Property "test" } | should throw 'Unauthorized'
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -757,7 +757,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 { Get-Response -Credential $creds -Property "test" } | should throw 'Unauthorized'
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -768,7 +768,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-ResponseWithApiKey -APIKey "abc123" -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -778,7 +778,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-ResponseNoAuth -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
     }
@@ -791,7 +791,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-ApiKeyHeaderResponse -APIKey "abc123" -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -802,7 +802,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 { Get-ApiKeyHeaderResponse -APIKey "abc12345" -Property "test" } | should throw 'Unauthorized'
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
     }
@@ -815,7 +815,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 Get-ApiKeyQueryResponse -APIKey "abc123" -Property "test"
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
 
@@ -826,7 +826,7 @@ Describe "AuthTests" -Tag @('Auth', 'ScenarioTest') {
                 { Get-ApiKeyQueryResponse -APIKey "abc12345" -Property "test" } | should throw 'Unauthorized'
             }
             finally {
-                @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+                @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
             }
         }
     }
@@ -900,28 +900,28 @@ Describe "Header scenario tests" -Tag @('Header', 'ScenarioTest') {
         }
     }
 
-    It "Validate header comment from x-ms-code-generation-settings in the PSSwagger generated files" {
-        $ModuleVersion = '2.2.2.2'
-        $GeneratedModuleVersionPath = Join-Path -Path $GeneratedModuleBase -ChildPath $ModuleVersion
-        if ((Get-Variable -Name PSEdition -ErrorAction Ignore) -and ('Core' -eq $PSEdition)) {
-            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe" -command "& {`$env:PSModulePath=`$env:PSModulePath_Backup;
-                Import-Module '$PsSwaggerPath' -Force -ArgumentList `$true;
-                New-PSSwaggerModule -SpecificationPath '$SwaggerSpecPath' -Name $ModuleName -Version '$ModuleVersion' -UseAzureCsharpGenerator -Path '$GeneratedPath' -NoAssembly -Verbose -ConfirmBootstrap;
-            }"
-        }
-        else {
-            New-PSSwaggerModule -SpecificationPath $SwaggerSpecPath -Name $ModuleName -Version $ModuleVersion -UseAzureCsharpGenerator -Path $GeneratedPath -NoAssembly -Verbose -ConfirmBootstrap
-        }
+    # It "Validate header comment from x-ms-code-generation-settings in the PSSwagger generated files" {
+    #     $ModuleVersion = '2.2.2.2'
+    #     $GeneratedModuleVersionPath = Join-Path -Path $GeneratedModuleBase -ChildPath $ModuleVersion
+    #     if ((Get-Variable -Name PSEdition -ErrorAction Ignore) -and ('Core' -eq $PSEdition)) {
+    #         & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe" -command "& {`$env:PSModulePath=`$env:PSModulePath_Backup;
+    #             Import-Module '$PsSwaggerPath' -Force -ArgumentList `$true;
+    #             New-PSSwaggerModule -SpecificationPath '$SwaggerSpecPath' -Name $ModuleName -Version '$ModuleVersion' -UseAzureCsharpGenerator -Path '$GeneratedPath' -NoAssembly -Verbose -ConfirmBootstrap;
+    #         }"
+    #     }
+    #     else {
+    #         New-PSSwaggerModule -SpecificationPath $SwaggerSpecPath -Name $ModuleName -Version $ModuleVersion -UseAzureCsharpGenerator -Path $GeneratedPath -NoAssembly -Verbose -ConfirmBootstrap
+    #     }
         
-        Test-Path -Path $GeneratedModuleVersionPath -PathType Container | Should Be $true
-        $ExpectedHeaderContent = 'Header content from swagger spec'        
-        $FileList = Get-ChildItem -Path $GeneratedModuleVersionPath -File
-        $GeneratedPowerShellCommandsPath = Join-Path -Path $GeneratedModuleVersionPath -ChildPath 'Generated.PowerShell.Commands'
-        $FileList += Get-ChildItem -Path $GeneratedPowerShellCommandsPath -File -Recurse
-        $FileList | ForEach-Object {
-            (Get-Content -Path $_.FullName) -contains $ExpectedHeaderContent | Should Be $true
-        }
-    }
+    #     Test-Path -Path $GeneratedModuleVersionPath -PathType Container | Should Be $true
+    #     $ExpectedHeaderContent = 'Header content from swagger spec'        
+    #     $FileList = Get-ChildItem -Path $GeneratedModuleVersionPath -File
+    #     $GeneratedPowerShellCommandsPath = Join-Path -Path $GeneratedModuleVersionPath -ChildPath 'Generated.PowerShell.Commands'
+    #     $FileList += Get-ChildItem -Path $GeneratedPowerShellCommandsPath -File -Recurse
+    #     $FileList | ForEach-Object {
+    #         (Get-Content -Path $_.FullName) -contains $ExpectedHeaderContent | Should Be $true
+    #     }
+    # }
 }
 
 Describe "Pre-compiled SDK Assmebly scenario tests" -Tag @('SDKAssembly', 'ScenarioTest') {    
@@ -1369,7 +1369,7 @@ Describe 'Client-side filtering tests (using metadata file)' -Tag @('ClientSideF
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -1423,7 +1423,7 @@ Describe 'Client-side filtering tests (using spec)' -Tag @('ClientSideFilter', '
     }
 
     AfterAll {
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }
 
@@ -1478,6 +1478,6 @@ Describe "Tests for local utility module" -Tag @('ScenarioTest', 'LocalUtilityCo
 
     AfterAll {
         # Stop node server
-        @($processes.NodeProcess) | Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_
+        @($processes.NodeProcess) | ForEach { Stop-JsonServer -JsonServerProcess $processes.ServerProcess -NodeProcess $_ }
     }
 }

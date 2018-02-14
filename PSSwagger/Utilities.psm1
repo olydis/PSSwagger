@@ -34,7 +34,7 @@ function Get-HashtableKeyCount
     )
 
     $KeyCount = 0
-    $Hashtable.GetEnumerator() | ForEach-Object { $KeyCount++ }    
+    $Hashtable.GetEnumerator() | ForEach-Object { $KeyCount++ }
     return $KeyCount
 }
 

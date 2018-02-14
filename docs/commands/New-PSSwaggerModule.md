@@ -179,7 +179,6 @@ Accept wildcard characters: False
 
 ### -ModelsName
 Models name if it is different from default value 'Models'.
-It is recommended to specify the custom models name in using x-ms-code-generation-settings extension in specification.
 
 ```yaml
 Type: String

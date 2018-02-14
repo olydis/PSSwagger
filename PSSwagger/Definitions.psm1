@@ -8,10 +8,14 @@
 #
 #########################################################################################
 
+$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
+$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
+
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath SwaggerUtils.psm1) -DisableNameChecking
 . "$PSScriptRoot\PSSwagger.Constants.ps1" -Force
+. "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 
 <#
@@ -932,18 +936,18 @@ function New-SwaggerSpecDefinitionCommand
             $parameterName = $ParameterDetails.Name
             $paramName = "`$$parameterName" 
             $paramType = "[$($ParameterDetails.Type)]$([Environment]::NewLine)        "
-            $AllParameterSetsString = $executionContext.InvokeCommand.ExpandString($parameterAttributeString)
+            $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
             $ValidateSetDefinition = $null
             if ($ParameterDetails.ValidateSet)
             {
                 $ValidateSetString = $ParameterDetails.ValidateSet
-                $ValidateSetDefinition = $executionContext.InvokeCommand.ExpandString($ValidateSetDefinitionString)
+                $ValidateSetDefinition = (Eval-Ts $tsTemplates "validateSetDefinitionString" $ValidateSetString)
             }
             $ParameterAliasAttribute = $null
-            $paramblock += $executionContext.InvokeCommand.ExpandString($parameterDefString)
+            $paramblock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
 
             $pDescription = $ParameterDetails.Description
-            $paramHelp += $executionContext.InvokeCommand.ExpandString($helpParamStr)
+            $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $pDescription)
         }
     }
 
