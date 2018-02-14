@@ -671,8 +671,8 @@ function doParameterStuff(commandName: string, parametersToAdd: any[]): {} {
         paramBlock += parameterDefString(AllParameterSetsString, ParameterAliasAttribute, ValidateSetDefinition, paramType, paramName, parameterDefaultValueOption)
         paramHelp += helpParamStr(parameterName, parameterToAdd.Details.Description)
       }
-      else if (parameterToAdd.Details.Containskey('Type')) {
-        paramType = "[$($parameterToAdd.Details.Type)]$paramType"
+      else if (parameterToAdd.Details.Type) {
+        paramType = `[${parameterToAdd.Details.Type}]${paramType}`;
 
         paramBlock += parameterDefString(AllParameterSetsString, ParameterAliasAttribute, ValidateSetDefinition, paramType, paramName, parameterDefaultValueOption)
         paramHelp += helpParamStr(parameterName, parameterToAdd.Details.Description)

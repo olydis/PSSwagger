@@ -230,7 +230,7 @@ $additionalConditionStart$methodBlock$additionalConditionEnd
 
 $parameterSetBasedMethodStrElseIfCase = @'
  elseif ($ParameterSetConditionsStr) {
-# $additionalConditionStart$methodBlock$additionalConditionEnd
+$additionalConditionStart$methodBlock$additionalConditionEnd
     }
 '@
 
