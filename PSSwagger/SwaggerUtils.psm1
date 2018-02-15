@@ -44,7 +44,6 @@ function ConvertTo-PsCustomObjectFromHashtable {
     } 
 }
 
-# $res = $res | ForEach { $ht = @{}; $_.psobject.properties | ForEach { $ht[$_.Name] = $_.Value }; return $ht }
 function ConvertTo-HashtableFromPsCustomObject { 
      param ( 
          [Parameter(  
@@ -56,14 +55,34 @@ function ConvertTo-HashtableFromPsCustomObject {
      ); 
      
      process { 
-         foreach ($myPsObject in $psCustomObject) { 
+         foreach ($myPsObject in $psCustomObject) {
              $output = @{}; 
+            #  Write-Warning "VAL: $($myPsObject | ConvertTo-Json)"
              $myPsObject | Get-Member -MemberType *Property | % { 
+                # Write-Warning "PROP: $($_ | ConvertTo-Json)"
                  $output.($_.name) = $myPsObject.($_.name); 
              } 
              $output; 
          } 
      } 
+}
+function ConvertTo-HashtableFromPsCustomObject2 { 
+    param ( 
+        [Parameter(  
+            Position = 0,   
+            Mandatory = $true,   
+            ValueFromPipeline = $true,  
+            ValueFromPipelineByPropertyName = $true  
+        )] [object[]]$psCustomObject 
+    ); 
+    
+    process { 
+        foreach ($myPsObject in $psCustomObject) {
+            $output = @{}; 
+            $myPsObject | ForEach { $output[$_.Name] = $_.Value; };
+            $output; 
+        } 
+    } 
 }
 
 $tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
@@ -1543,109 +1562,6 @@ function Test-OperationNameInDefinitionList
     return $SwaggerDict['Definitions'].ContainsKey($Name)
 }
 
-function Get-OutputType
-{
-    param
-    (
-        [Parameter(Mandatory=$true)]
-        [PSCustomObject]
-        $Schema,
-
-        [Parameter(Mandatory=$true)]
-        [string]
-        $ModelsNamespace,
-
-        [Parameter(Mandatory=$true)]
-        [PSCustomObject]
-        $DefinitionList
-    )
-
-    $defList = ConvertTo-PsCustomObjectFromHashtable $DefinitionList
-    Write-Warning "FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"
-    return (Eval-Ts $tsSwaggerUtils "getOutputType" $Schema, $ModelsNamespace, $defList)
-
-    # $outputTypeBlock = $null
-    # $outputType = $null
-    # if(Get-member -inputobject $schema -name '$ref')
-    # {
-    #     $ref = $schema.'$ref'
-    #     $RefParts = $ref -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-    #     if(($RefParts.Count -ge 3) -and ($RefParts[-2] -eq 'definitions'))
-    #     {
-    #         $key = Get-CSharpModelName -Name $RefParts[-1]
-    #         if ($definitionList.ContainsKey($key))
-    #         {
-    #             $definition = ($definitionList[$key]).Value
-    #             if(Get-Member -InputObject $definition -name 'properties')
-    #             {
-    #                 $fullPathDataType = ""
-    #                 if(Get-HashtableKeyCount -Hashtable $definition.properties.PSObject.Properties)
-    #                 {
-    #                     $defProperties = $definition.properties
-
-    #                     # If this data type is actually a collection of another $ref 
-    #                     if(Get-member -InputObject $defProperties -Name 'value')
-    #                     {
-    #                         $defValue = $defProperties.value
-    #                         $outputValueType = ""
-                            
-    #                         # Iff the value has items with $ref nested properties,
-    #                         # this is a collection and hence we need to find the type of collection
-
-    #                         if((Get-Member -InputObject $defValue -Name 'items') -and 
-    #                             (Get-Member -InputObject $defValue.items -Name '$ref'))
-    #                         {
-    #                             $defRef = $defValue.items.'$ref'
-    #                             $DefRefParts = $defRef -split '/' | ForEach-Object { if($_.Trim()){ $_.Trim() } }
-    #                             if(($DefRefParts.Count -ge 3) -and ($DefRefParts[-2] -eq 'definitions'))
-    #                             {
-    #                                 $ReferenceTypeName = $DefRefParts[-1]
-    #                                 $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeName
-    #                                 $fullPathDataType = "$ModelsNamespace.$ReferenceTypeName"
-    #                             }
-    #                             if(Get-member -InputObject $defValue -Name 'type') 
-    #                             {
-    #                                 $defType = $defValue.type
-    #                                 switch ($defType) 
-    #                                 {
-    #                                     "array" { $outputValueType = '[]' }
-    #                                     Default {
-    #                                         $exceptionMessage = $LocalizedData.DataTypeNotImplemented -f ($defType, $ref)
-    #                                         throw ([System.NotImplementedException] $exceptionMessage)
-    #                                     }
-    #                                 }
-    #                             }
-
-    #                             if($outputValueType -and $fullPathDataType) {$fullPathDataType = $fullPathDataType + " " + $outputValueType}
-    #                         }
-    #                         else
-    #                         { # if this datatype has value, but no $ref and items
-    #                             $fullPathDataType = "$ModelsNamespace.$key"
-    #                         }
-    #                     }
-    #                     else
-    #                     { # if this datatype is not a collection of another $ref
-    #                         $fullPathDataType = "$ModelsNamespace.$key"
-    #                     }
-    #                 }
-
-    #                 if($fullPathDataType)
-    #                 {
-    #                     $fullPathDataType = $fullPathDataType.Replace('[','').Replace(']','').Trim()
-    #                     $outputType = $fullPathDataType
-    #                     $outputTypeBlock = (Eval-Ts $tsTemplates "outputTypeStr" $fullPathDataType)
-    #                 }
-    #             }
-    #         }
-    #     }
-    # }
-
-    # return @{
-    #     OutputType      = $outputType
-    #     OutputTypeBlock = $outputTypeBlock
-    # }
-}
-
 <#
 .DESCRIPTION
     Utility function to get the parameter names declared in the Azure Resource Id (Endpoint path).
@@ -1680,54 +1596,56 @@ function Get-AzureResourceIdParameters {
         $DefinitionList
     )
 
-    $GetPathItemObject = $JsonPathItemObject.value.PSObject.Properties | Where-Object {$_.Name -eq 'Get'}
-    if(-not $GetPathItemObject) {
-        Write-Debug "Get operation is available in $ResourceId"
-        return
-    }
+    return Eval-Ts $tsSwaggerUtils "getAzureResourceIdParameters" $JsonPathItemObject, $ResourceId, $NameSpace, $Models, $DefinitionList
 
-    $tokens = $ResourceId.Split('/', [System.StringSplitOptions]::RemoveEmptyEntries)
-    if (-not $tokens -or ($tokens.Count -lt 8)) {
-        Write-Debug -Message ("The specified endpoint '{0}' is not a valid resource identifier." -f $ResourceId)
-        return
-    }
-    $ResourceIdParameters = $tokens | Where-Object {$_ -match '^{.*}$'} | Foreach-Object {
-        $parameterName = $_.Trim('{}')
-        if ($parameterName -ne 'SubscriptionId') {
-            $parameterName
-        }
-    }
-    if(-not $ResourceIdParameters -or ("{$($ResourceIdParameters[-1])}" -ne $tokens[-1])) {
-        return
-    }
+    # $GetPathItemObject = $JsonPathItemObject.value.PSObject.Properties | Where-Object {$_.Name -eq 'Get'}
+    # if(-not $GetPathItemObject) {
+    #     Write-Debug "Get operation is available in $ResourceId"
+    #     return
+    # }
 
-    $Responses = ""
-    if((Get-Member -InputObject $GetPathItemObject.value -Name 'responses') -and $GetPathItemObject.value.responses) {
-        $Responses = $GetPathItemObject.value.responses
-    }
-    if(-not $Responses) {
-        return
-    }
+    # $tokens = $ResourceId.Split('/', [System.StringSplitOptions]::RemoveEmptyEntries)
+    # if (-not $tokens -or ($tokens.Count -lt 8)) {
+    #     Write-Debug -Message ("The specified endpoint '{0}' is not a valid resource identifier." -f $ResourceId)
+    #     return
+    # }
+    # $ResourceIdParameters = $tokens | Where-Object {$_ -match '^{.*}$'} | Foreach-Object {
+    #     $parameterName = $_.Trim('{}')
+    #     if ($parameterName -ne 'SubscriptionId') {
+    #         $parameterName
+    #     }
+    # }
+    # if(-not $ResourceIdParameters -or ("{$($ResourceIdParameters[-1])}" -ne $tokens[-1])) {
+    #     return
+    # }
 
-    $GetResponse_Params = @{
-        Responses = $Responses.PSObject.Properties
-        Namespace = $Namespace
-        Models = $Models
-        DefinitionList = $DefinitionList
-    }
+    # $Responses = ""
+    # if((Get-Member -InputObject $GetPathItemObject.value -Name 'responses') -and $GetPathItemObject.value.responses) {
+    #     $Responses = $GetPathItemObject.value.responses
+    # }
+    # if(-not $Responses) {
+    #     return
+    # }
 
-    $ResponseResult = Get-Response @GetResponse_Params
-    $GetOperationOutputType = $ResponseResult.OutputType
-    $ModelsNamespace = "$Namespace.$Models"
-    if(-not $GetOperationOutputType -or -not $GetOperationOutputType.StartsWith($ModelsNamespace, [System.StringComparison]::OrdinalIgnoreCase)) {
-        return
-    }
+    # $GetResponse_Params = @{
+    #     Responses = $Responses.PSObject.Properties
+    #     Namespace = $Namespace
+    #     Models = $Models
+    #     DefinitionList = $DefinitionList
+    # }
 
-    return [ordered]@{
-        ResourceIdParameters     = $ResourceIdParameters
-        ResourceName             = $ResourceIdParameters[-1]
-        InputObjectParameterType = $GetOperationOutputType
-    }
+    # $ResponseResult = Get-Response @GetResponse_Params
+    # $GetOperationOutputType = $ResponseResult.OutputType
+    # $ModelsNamespace = "$Namespace.$Models"
+    # if(-not $GetOperationOutputType -or -not $GetOperationOutputType.StartsWith($ModelsNamespace, [System.StringComparison]::OrdinalIgnoreCase)) {
+    #     return
+    # }
+
+    # return [ordered]@{
+    #     ResourceIdParameters     = $ResourceIdParameters
+    #     ResourceName             = $ResourceIdParameters[-1]
+    #     InputObjectParameterType = $GetOperationOutputType
+    # }
 }
 
 function Get-Response
@@ -1751,61 +1669,8 @@ function Get-Response
         $DefinitionList
     )
 
-    $outputTypeFlag = $false
-    $responseBody = ""
-    $outputType = $null
-    $outputTypeBlock = $null
-    $failWithDesc = ""
-
-    $failWithDesc = ""
-    $responses | ForEach-Object {
-        $responseStatusValue = "'" + $_.Name + "'"
-        $value = $_.Value
-
-        switch($_.Name) {
-            # Handle Success
-            {200..299 -contains $_} {
-                if(-not $outputTypeFlag -and (Get-member -inputobject $value -name "schema"))
-                {
-                    # Add the [OutputType] for the function
-                    $OutputTypeParams = @{
-                        "schema"  = $value.schema
-                        "ModelsNamespace" = "$NameSpace.$Models"
-                        "definitionList" = $definitionList
-                    }
-
-                    $outputTypeResult = Get-OutputType @OutputTypeParams
-                    $outputTypeBlock = $outputTypeResult.OutputTypeBlock
-                    $outputType = $outputTypeResult.OutputType
-                    $outputTypeFlag = $true
-                }
-            }
-            # Handle Client Error
-            {400..499 -contains $_} {
-                if($Value.description)
-                {
-                    $failureDescription = "Write-Error 'CLIENT ERROR: " + $value.description + "'"
-                    $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
-                }
-            }
-            # Handle Server Error
-            {500..599 -contains $_} {
-                if($Value.description)
-                {
-                    $failureDescription = "Write-Error 'SERVER ERROR: " + $value.description + "'"
-                    $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
-                }
-            }
-        }
-    }
-
-    $responseBody += $executionContext.InvokeCommand.ExpandString($responseBodySwitchCase)
-    
-    return @{
-        ResponseBody    = $responseBody
-        OutputType      = $OutputType
-        OutputTypeBlock = $OutputTypeBlock
-    }
+    Write-Warning "FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"
+    return Eval-Ts $tsTemplates "getResponse" (ConvertTo-HashtableFromPsCustomObject2 $Responses), $NameSpace, $Models, (ConvertTo-PsCustomObjectFromHashtable $DefinitionList)
 }
 function Get-CSharpModelName
 {

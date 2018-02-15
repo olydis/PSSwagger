@@ -200,31 +200,6 @@ $methodBlockCmdletCall = @'
         `$TaskResult = `$null
 '@
 
-$successReturn = @'
-Write-Verbose "Operation completed with return code: `$responseStatusCode."
-                        $result = $TaskResult.Result.Body
-                        Write-Verbose -Message "$($result | Out-String)"
-                        $result
-'@
-
-$responseBodySwitchCase = @'
-switch (`$responseStatusCode)
-                {
-                    {200..299 -contains `$responseStatusCode} {
-                        $successReturn
-                    }$failWithDesc
-                    
-                    Default {Write-Error -Message "Status: `$responseStatusCode received."}
-                }
-'@
-
-$failCase = @'
-
-                    {`$responseStatusCode} {
-                        $responseStatusValue {$failureDescription}
-                    }
-'@
-
 $createObjectStr = @'
 
     `$Object = New-Object -TypeName $DefinitionTypeName

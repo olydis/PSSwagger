@@ -471,127 +471,270 @@ function getOutputType(schema: any, modelsNamespace: string, definitionList: any
 }
 
 
-// function getAzureResourceIdParameters(
-//   jsonPathItemObject: any,
-//   resourceId: string,
-//   namespace: string,
-//   models: string,
-//   definitionList: any
-// ): any {
-//   const getPathItemObject = jsonPathItemObject[Object.keys(jsonPathItemObject).filter(x => x.toLowerCase() === "get")[0]];
-//   if (!getPathItemObject) {
-//     logDebug(`Get operation not available in ${resourceId}.`);
-//     return;
-//   }
-
-//   const tokens = resourceId.split('/').filter(x => x !== "");
-//   if (tokens.length < 8) {
-//     logDebug(`The specified endpoint '${resourceId}' is not a valid resource identifier.`);
-//     return;
-//   }
-//   const resourceIdParameters = tokens
-//     .filter(t => t.startsWith('{') && t.endsWith('}'))
-//     .map(t => t.slice(1, -1))
-//     .filter(t => t.toLowerCase() !== "subscriptionid");
-//   if (tokens[tokens.length - 1] !== `{${resourceIdParameters[resourceIdParameters.length - 1]}}`) {
-//     return;
-//   }
-
-//   const responses = getPathItemObject.responses;
-//   if (!responses) {
-//     return;
-//   }
-
-//   const getResponseParams = { responses, namespace, models, definitionList };
-
-// }
-
-// function getResponse(responses: any, namespace: string, models: string, definitionList: any): any {
-//   let outputTypeFlag = false;
-//   let responseBody = "";
-//   let outputType: ???= null;
-//   let outputTypeBlock: ???= null;
-//   let failWithDesc = "";
-
-//   for (const key of Object.keys(responses).map(x => +x)) {
-//     const responseStatusValue = `'${key}'`;
-//     const value = responses[key];
-
-//     // handle success
-//     if (200 <= key && key < 300) {
-//       if (!outputTypeFlag && value.schema) {
-//         // Add the [OutputType] for the function
-
-//       }
-//     }
-//   }
-
-//   $responses | ForEach - Object {
-
-//     switch ($_.Name) {
-//       # Handle Success
-//     { 200..299 - contains $_ } {
-//       if (-not $outputTypeFlag - and(Get - member - inputobject $value - name "schema"))
-//       {
-//         # Add the[OutputType] for the function
-//                     $OutputTypeParams = @{
-//             "schema"  = $value.schema
-//                         "ModelsNamespace" = "$NameSpace.$Models"
-//                         "definitionList" = $definitionList
-//           }
-
-//         $outputTypeResult = Get - OutputType @OutputTypeParams
-//         $outputTypeBlock = $outputTypeResult.OutputTypeBlock
-//         $outputType = $outputTypeResult.OutputType
-//         $outputTypeFlag = $true
-//       }
-//     }
-//     # Handle Client Error
-//     { 400..499 - contains $_ } {
-//       if ($Value.description) {
-//         $failureDescription = "Write-Error 'CLIENT ERROR: " + $value.description + "'"
-//         $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
-//       }
-//     }
-//     # Handle Server Error
-//     { 500..599 - contains $_ } {
-//       if ($Value.description) {
-//         $failureDescription = "Write-Error 'SERVER ERROR: " + $value.description + "'"
-//         $failWithDesc += $executionContext.InvokeCommand.ExpandString($failCase)
-//       }
-//     }
-//   }
-// }
-
-// $responseBody += $executionContext.InvokeCommand.ExpandString($responseBodySwitchCase)
-
-// return @{
-//   ResponseBody    = $responseBody
-//         OutputType      = $OutputType
-//         OutputTypeBlock = $OutputTypeBlock
-// }
-// }
-
-
-
-function getPathFunctionBody(
-  ParameterSetDetails: any,
-  ODataExpressionBlock: string,
-  ParameterGroupsExpressionBlock: string,
-  GlobalParameters: string[],
-  SwaggerDict: any,
-  SwaggerMetaDict: any,
-  AddHttpClientHandler: boolean,
-  HostOverrideCommand: string,
-  AuthenticationCommand: string,
-  AuthenticationCommandArgumentName: string,
-  FlattenedParametersOnPSCmdlet: any,
-  ParameterAliasMapping: any,
-  GlobalParametersStatic: any,
-  FilterBlock: string
+function getAzureResourceIdParameters(
+  jsonPathItemObject: any,
+  resourceId: string,
+  namespace: string,
+  models: string,
+  definitionList: any
 ): any {
+  const getPathItemObject = jsonPathItemObject[Object.keys(jsonPathItemObject).filter(x => x.toLowerCase() === "get")[0]];
+  if (!getPathItemObject) {
+    logDebug(`Get operation not available in ${resourceId}.`);
+    return;
+  }
 
+  const tokens = resourceId.split('/').filter(x => x !== "");
+  if (tokens.length < 8) {
+    logDebug(`The specified endpoint '${resourceId}' is not a valid resource identifier.`);
+    return;
+  }
+  const resourceIdParameters = tokens
+    .filter(t => t.startsWith('{') && t.endsWith('}'))
+    .map(t => t.slice(1, -1))
+    .filter(t => t.toLowerCase() !== "subscriptionid");
+  if (tokens[tokens.length - 1] !== `{${resourceIdParameters[resourceIdParameters.length - 1]}}`) {
+    return;
+  }
+
+  const responses = getPathItemObject.responses;
+  if (!responses) {
+    return;
+  }
+  const responseResult = getResponse(responses, namespace, models, definitionList);
+  const getOperationOutputType = responseResult.OutputType;
+  const modelsNamespace = `${namespace}.${models}`;
+  if (!getOperationOutputType || !getOperationOutputType.toLowerCase().startsWith(modelsNamespace.toLowerCase())) {
+    return;
+  }
+
+  return {
+    resourceIdParameters,
+    resourceName: resourceIdParameters[resourceIdParameters.length - 1],
+    inputObjectParameterType: getOperationOutputType
+  };
 }
+
+function getResponse(responses: any, namespace: string, models: string, definitionList: any): any {
+  let outputTypeFlag = false;
+  let outputType: any = null;
+  let outputTypeBlock: any = null;
+  let failWithDesc = "";
+
+  for (const key of Object.keys(responses).map(x => +x).filter(x => !isNaN(x))) {
+    const responseStatusValue = `'${key}'`;
+    const value = responses[key];
+
+    // handle success
+    if (200 <= key && key < 300) {
+      if (!outputTypeFlag && value.schema) {
+        // Add the [OutputType] for the function
+        const outputTypeResult = getOutputType(value.schema, `${namespace}.${models}`, definitionList);
+        outputTypeBlock = outputTypeResult.outputTypeBlock;
+        outputType = outputTypeResult.outputType;
+        outputTypeFlag = true;
+      }
+    }
+
+    // Handle Client Error
+    if (400 <= key && key < 500) {
+      if (value.description) {
+        failWithDesc += failCase(responseStatusValue, "Write-Error 'CLIENT ERROR: " + value.description + "'");
+      }
+    }
+
+    // Handle Server Error
+    if (500 <= key && key < 600) {
+      if (value.description) {
+        failWithDesc += failCase(responseStatusValue, "Write-Error 'SERVER ERROR: " + value.description + "'");
+      }
+    }
+  }
+
+  return {
+    responseBody: responseBodySwitchCase(failWithDesc),
+    outputType,
+    outputTypeBlock
+  };
+}
+
+
+
+// function getPathFunctionBody(
+//   parameterSetDetails: any,
+//   oDataExpressionBlock: string,
+//   parameterGroupsExpressionBlock: string,
+//   globalParameters: string[],
+//   swaggerDict: any,
+//   swaggerMetaDict: any,
+//   addHttpClientHandler: boolean,
+//   hostOverrideCommand: string,
+//   authenticationCommand: string,
+//   authenticationCommandArgumentName: string,
+//   flattenedParametersOnPSCmdlet: any,
+//   parameterAliasMapping: any,
+//   globalParametersStatic: any,
+//   filterBlock: string
+// ): any {
+
+//     let outputTypeBlock = null;
+//     const info = swaggerDict['Info'];
+//     const definitionList = swaggerDict['Definitions'];
+//     const useAzureCsharpGenerator = swaggerMetaDict['UseAzureCsharpGenerator'];
+//     const infoVersion = info['infoVersion'];
+//     const clientName = '$' + info['ClientTypeName'];
+//     const namespace = info.namespace;
+//     const fullClientTypeName = namespace + '.' + info['ClientTypeName']
+//     const subscriptionId = null;
+//     const baseUri = null;
+//     let advancedFunctionEndCodeBlock = '';
+//     let getServiceCredentialStr = 'Get-AzServiceCredential';
+
+//     let parameterSetBasedMethodStr = '';
+//     let resourceIdParamCodeBlock = '';
+//     for (const parameterSetDetail of parameterSetDetails) {
+
+//         if((parameterSetDetail.OperationId !== parameterSetDetail.ParameterSetName) &&
+//           (parameterSetDetail.ParameterSetName.toLowerCase().startsWith('InputObject_'.toLowerCase()) ||
+//           parameterSetDetail.ParameterSetName.toLowerCase().startsWith('ResourceId_'.toLowerCase()))) {
+//             continue;
+//         }
+
+//         // Responses isn't actually used right now, but keeping this when we need to handle responses per parameter set
+//         const responses = parameterSetDetail.Responses;
+//         const operationId = parameterSetDetail.OperationId;
+//         const parameterSetName = parameterSetDetail.ParameterSetName;
+//         const methodName = parameterSetDetail.MethodName;
+//         const operations = parameterSetDetail.Operations;
+//         const paramList = parameterSetDetail.ExpandedParamList;
+//         let cmdlet = '';
+//         if (parameterSetDetail.ContainsKey('Cmdlet') && parameterSetDetail.Cmdlet) {
+//             cmdlet = parameterSetDetail.Cmdlet;
+//         }
+
+//         let cmdletArgs = ''
+//         if (parameterSetDetail.ContainsKey('CmdletArgs') && parameterSetDetail.CmdletArgs) {
+//             cmdletArgs = parameterSetDetail.CmdletArgs;
+//         }
+
+//       let cmdletParameter = ''
+//         if (parameterSetDetail.ContainsKey('CmdletParameter') && parameterSetDetail.CmdletParameter) {
+//             cmdletParameter = parameterSetDetail.CmdletParameter;
+//         }
+
+//         if (responses) {
+//             const responseBodyParams = {
+//                                     responses: responses.PSObject.Properties,
+//                                     namespace: namespace,
+//                                     definitionList: definitionList,
+//                                     Models: info.Models
+//                                 };
+
+//             const getResponseResult = Get-Response @responseBodyParams
+//             // For now, use the first non-empty output type
+//             if ((-not $outputTypeBlock) -and $GetResponseResult -and $GetResponseResult.OutputTypeBlock) {
+//                 $outputTypeBlock = $GetResponseResult.OutputTypeBlock
+//             }
+//         }
+
+//         if ($methodName) {
+//             $methodBlock = $executionContext.InvokeCommand.ExpandString($methodBlockFunctionCall)
+//         } else {
+//             $methodBlock = $executionContext.InvokeCommand.ExpandString($methodBlockCmdletCall)
+//         }
+//         $additionalConditionStart = ''
+//         $additionalConditionEnd = ''
+//         if ($parameterSetDetail.ContainsKey('AdditionalConditions') -and $parameterSetDetail.AdditionalConditions) {
+//             if ($parameterSetDetail.AdditionalConditions.Count -eq 1) {
+//                 $additionalConditionStart = "      if ($($parameterSetDetail.AdditionalConditions[0])) {$([Environment]::NewLine)"
+//                 $additionalConditionEnd = "$([Environment]::NewLine)      } else { `$taskResult = `$null }"
+//             } elseif ($parameterSetDetail.AdditionalConditions.Count -gt 1) {
+//                 $additionalConditionStart = "      if ("
+//                 foreach ($condition in $parameterSetDetail.AdditionalConditions) {
+//                     $additionalConditionStart += "($condition) -and"
+//                 }
+//                 $additionalConditionStart = $additionalConditionStart.Substring(0, $additionalConditionStart.Length-5)
+//                 $additionalConditionStart = ") {$([Environment]::NewLine)"
+//                 $additionalConditionEnd = "$([Environment]::NewLine)      } else { `$taskResult = `$null }"
+//             }
+//         }
+
+//         $ParameterSetConditions = @("'$($parameterSetDetail.ParameterSetName)' -eq `$PsCmdlet.ParameterSetName")
+//         if($parameterSetDetail.ContainsKey('ClonedParameterSetNames') -and $parameterSetDetail.ClonedParameterSetNames) {
+//             $CloneParameterSetConditions = @()
+//             $parameterSetDetail.ClonedParameterSetNames | ForEach-Object {
+//                 $CloneParameterSetConditions += @("'$_' -eq `$PsCmdlet.ParameterSetName")
+//             }
+
+//             if($CloneParameterSetConditions) {
+//                 $ParameterSetConditions += $CloneParameterSetConditions
+
+//                 if($parameterSetDetail.ContainsKey('ResourceIdParameters') -and $parameterSetDetail.ResourceIdParameters) {
+//                     $ResourceIdParamCodeBlock += "if($($CloneParameterSetConditions -join ' -or ')) {
+//         `$GetArmResourceIdParameterValue_params = @{
+//             IdTemplate = '$($parameterSetDetail.EndpointRelativePath)'
+//         }
+
+//         if('ResourceId_$($parameterSetDetail.ParameterSetName)' -eq `$PsCmdlet.ParameterSetName) {
+//             `$GetArmResourceIdParameterValue_params['Id'] = `$ResourceId
+//         }
+//         else {
+//             `$GetArmResourceIdParameterValue_params['Id'] = `$InputObject.Id
+//         }
+//         `$ArmResourceIdParameterValues = Get-ArmResourceIdParameterValue @GetArmResourceIdParameterValue_params"
+//                     $parameterSetDetail.ResourceIdParameters | ForEach-Object {
+//                         $ResourceIdParamCodeBlock += "
+//         `$$_ = `$ArmResourceIdParameterValues['$_']`n"
+//                     }
+//                     $ResourceIdParamCodeBlock += "    }"
+//                 }
+//             }
+//         }
+//         $ParameterSetConditionsStr = $ParameterSetConditions -join ' -or '
+
+//         if ($parameterSetBasedMethodStr) {
+//             # Add the elseif condition
+//             $parameterSetBasedMethodStr += $executionContext.InvokeCommand.ExpandString($parameterSetBasedMethodStrElseIfCase)
+//         } else {
+//             # Add the beginning if condition
+//             $parameterSetBasedMethodStr += $executionContext.InvokeCommand.ExpandString($parameterSetBasedMethodStrIfCase)
+//         }
+//     }
+
+//     # Prepare the code block for constructing the actual operation parameters which got flattened on the generated cmdlet.
+//     $FlattenedParametersBlock = ''
+//     $FlattenedParametersOnPSCmdlet.GetEnumerator() | ForEach-Object {
+//         $SwaggerOperationParameterName = $_.Name        
+//         $DefinitionDetails = $_.Value
+//         $FlattenedParamType = $DefinitionDetails.Name
+
+//         $FlattenedParametersList = $DefinitionDetails.ParametersTable.GetEnumerator() | ForEach-Object { $_.Name }
+//         $FlattenedParametersListStr = ''
+//         if($FlattenedParametersList) {
+//             $FlattenedParametersListStr = "@('$($flattenedParametersList -join "', '")')"
+//         }
+
+//         $FlattenedParametersBlock += $executionContext.InvokeCommand.ExpandString($constructFlattenedParameter)
+//     }
+
+//     $ParameterAliasMappingBlock = ''
+//     $ParameterAliasMapping.GetEnumerator() | ForEach-Object {
+//         $ParameterAliasMappingBlock += "`$$($_.Name) = `$$($_.Value)`n"
+//     }
+
+//     $body = $executionContext.InvokeCommand.ExpandString($functionBodyStr)
+
+//     $bodyObject = @{ OutputTypeBlock = $outputTypeBlock;
+//                      Body = $body;
+//                     }
+
+//     $result = @{
+//         BodyObject = $bodyObject
+//         ParameterSetDetails = $ParameterSetDetails
+//     }
+
+//     return $result
+// }
 
 
 function doParameterStuff(
@@ -1023,18 +1166,18 @@ const pageTypeObjectBlock = (pageType: string) => `
 const filterBlockStrHelper = (clientSideFilter: any): string => {
   let result = "";
   let prependComma = false;
-  for (const filter of clientSideFilter.Filters) {
+  for (const filter of clientSideFilter.Filters || clientSideFilter.filters) {
     if (prependComma) {
       result += ", "
     } else {
       prependComma = true;
     }
     result += `@{
-    'Type' = '${filter.Type}'
-    'Value' = $${filter.Parameter}
-    'Property' = '${filter.Property}'
+    'Type' = '${filter.Type || filter.type}'
+    'Value' = $${filter.Parameter || filter.parameter}
+    'Property' = '${filter.Property || filter.property}'
 `;
-    for (const property of filter.NoteProperty) {
+    for (const property of filter.NoteProperty || []) {
       if ((property.Name === 'Type') || (property.Name === 'Parameter') || (property.Name === 'Property') || (property.Name === 'AppendParameterInfo')) {
         continue;
       }
@@ -1072,4 +1215,28 @@ foreach($serverSideResult in $serverSideResults) {
 }
 return
 }
+`;
+
+const failCase = (responseStatusValue: string, failureDescription: string) => `
+                    {$responseStatusCode} {
+                        ${responseStatusValue} {${failureDescription}}
+                    }
+`;
+
+const successReturn = `
+Write-Verbose "Operation completed with return code: \`$responseStatusCode."
+                        $result = $TaskResult.Result.Body
+                        Write-Verbose -Message "$($result | Out-String)"
+                        $result
+`;
+
+const responseBodySwitchCase = (failWithDesc: string) => `
+switch ($responseStatusCode)
+                {
+                    {200..299 -contains $responseStatusCode} {
+                        ${successReturn}
+                    }${failWithDesc}
+                    
+                    Default {Write-Error -Message "Status: $responseStatusCode received."}
+                }
 `;
