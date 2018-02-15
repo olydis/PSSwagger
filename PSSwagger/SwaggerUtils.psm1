@@ -66,14 +66,13 @@ function ConvertTo-HashtableFromPsCustomObject {
      } 
 }
 
-$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
+$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1)
 Import-Module -Name 'PSSwaggerUtility'
 . "$PSScriptRoot\PSSwagger.Constants.ps1" -Force
-. "$PSScriptRoot\Trie.ps1" -Force
 . "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 $script:CmdVerbTrie = $null
@@ -677,7 +676,7 @@ function Get-PathParamInfo
             foreach ($ParameterDetails in $AllParameterDetails) {
                 if($ParameterDetails -and ($ParameterDetails.ContainsKey('x_ms_parameter_grouping_group') -or $ParameterDetails.Type))
                 {
-                    $ParametersTable[$index] = $ParameterDetails
+                    $ParametersTable["$index"] = $ParameterDetails
                     $index = $index + 1            
                 }
             }

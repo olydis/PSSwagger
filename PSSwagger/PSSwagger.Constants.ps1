@@ -8,14 +8,6 @@
 #
 #########################################################################################
 
-$helpDescStr = @'
-.SYNOPSIS
-    $synopsis
-
-.DESCRIPTION
-    $description
-'@
-
 $DynamicAssemblyGenerationBlock = @'
 `$dllFullName = Join-Path -Path `$ClrPath -ChildPath '$DllFileName'
 if(-not (Test-Path -Path `$dllFullName -PathType Leaf)) {
@@ -81,45 +73,6 @@ $AsJobParameterString = @'
         [Parameter(Mandatory = $false)]
         [switch]
         $AsJob
-'@
-
-
-$advFnSignatureForPath = @'
-<#
-$commandHelp
-$paramHelp
-#>
-function $commandName
-{
-    $outputTypeBlock[CmdletBinding(DefaultParameterSetName='$DefaultParameterSetName')]
-    param($ParamBlockReplaceStr
-    )
-
-    Begin 
-    {
-	    $dependencyInitFunction
-        `$tracerObject = `$null
-        if (('continue' -eq `$DebugPreference) -or ('inquire' -eq `$DebugPreference)) {
-            `$oldDebugPreference = `$global:DebugPreference
-			`$global:DebugPreference = "continue"
-            `$tracerObject = New-PSSwaggerClientTracing
-            Register-PSSwaggerClientTracing -TracerObject `$tracerObject
-        }
-	}
-
-    Process {
-    $body
-
-    $PathFunctionBody
-    }
-
-    End {
-        if (`$tracerObject) {
-            `$global:DebugPreference = `$oldDebugPreference
-            Unregister-PSSwaggerClientTracing -TracerObject `$tracerObject
-        }
-    }
-}
 '@
 
 $constructFlattenedParameter = @'
@@ -226,12 +179,14 @@ $parameterSetBasedMethodStrIfCase = @'
 if ($ParameterSetConditionsStr) {
 $additionalConditionStart$methodBlock$additionalConditionEnd
     }
+
 '@
 
 $parameterSetBasedMethodStrElseIfCase = @'
  elseif ($ParameterSetConditionsStr) {
 $additionalConditionStart$methodBlock$additionalConditionEnd
     }
+
 '@
 
 $methodBlockFunctionCall = @'
@@ -243,150 +198,6 @@ $methodBlockCmdletCall = @'
         Write-Verbose -Message 'Calling cmdlet $Cmdlet.'
         $Cmdlet $CmdletArgs
         `$TaskResult = `$null
-'@
-
-$PathFunctionBodyAsJob = @'
-Write-Verbose -Message "Waiting for the operation to complete."
-
-    `$PSSwaggerJobScriptBlock = {
-        [CmdletBinding()]
-        param(    
-            [Parameter(Mandatory = `$true)]
-            [System.Threading.Tasks.Task]
-            `$TaskResult,
-
-            [Parameter(Mandatory = `$true)]
-			[string]
-			`$TaskHelperFilePath
-        )
-        if (`$TaskResult) {
-            . `$TaskHelperFilePath
-            `$GetTaskResult_params = @{
-                TaskResult = `$TaskResult
-            }
-$(
-if($TopPagingObjectStr) {
-"
-            `$TopInfo = $TopPagingObjectStr
-            `$GetTaskResult_params['TopInfo'] = `$TopInfo"
-}
-if($SkipPagingObjectStr) {
-"
-            `$SkipInfo = $SkipPagingObjectStr
-            `$GetTaskResult_params['SkipInfo'] = `$SkipInfo"
-}
-if($PageResultPagingObjectStr) {
-"
-            `$PageResult = $PageResultPagingObjectStr
-            `$GetTaskResult_params['PageResult'] = `$PageResult"
-}
-if($PageTypePagingObjectStr) {
-"
-            `$GetTaskResult_params['PageType'] = $PageTypePagingObjectStr"
-}
-)            
-            Get-TaskResult @GetTaskResult_params
-            $pagingBlock
-        }
-    }
-
-    `$PSCommonParameters = Get-PSCommonParameter -CallerPSBoundParameters `$PSBoundParameters
-    `$TaskHelperFilePath = Join-Path -Path `$ExecutionContext.SessionState.Module.ModuleBase -ChildPath 'Get-TaskResult.ps1'
-    if(`$AsJob)
-    {
-        `$ScriptBlockParameters = New-Object -TypeName 'System.Collections.Generic.Dictionary[string,object]'
-        `$ScriptBlockParameters['TaskResult'] = `$TaskResult
-        `$ScriptBlockParameters['AsJob'] = `$AsJob
-        `$ScriptBlockParameters['TaskHelperFilePath'] = `$TaskHelperFilePath
-        `$PSCommonParameters.GetEnumerator() | ForEach-Object { `$ScriptBlockParameters[`$_.Name] = `$_.Value }
-
-        Start-PSSwaggerJobHelper -ScriptBlock `$PSSwaggerJobScriptBlock ``
-                                     -CallerPSBoundParameters `$ScriptBlockParameters ``
-                                     -CallerPSCmdlet `$PSCmdlet ``
-                                     @PSCommonParameters
-    }
-    else
-    {
-        Invoke-Command -ScriptBlock `$PSSwaggerJobScriptBlock ``
-                       -ArgumentList `$TaskResult,`$TaskHelperFilePath ``
-                       @PSCommonParameters
-    }
-'@
-
-$PathFunctionBodySynch = @'
-if (`$TaskResult) {
-        `$GetTaskResult_params = @{
-            TaskResult = `$TaskResult
-        }
-$(
-if($TopPagingObjectStr) {
-"
-        `$TopInfo = $TopPagingObjectStr
-        `$GetTaskResult_params['TopInfo'] = `$TopInfo"
-}
-if($SkipPagingObjectStr) {
-"
-        `$SkipInfo = $SkipPagingObjectStr
-        `$GetTaskResult_params['SkipInfo'] = `$SkipInfo"
-}
-if($PageResultPagingObjectStr) {
-"
-        `$PageResult = $PageResultPagingObjectStr
-        `$GetTaskResult_params['PageResult'] = `$PageResult"
-}
-if($PageTypePagingObjectStr) {
-"
-        `$GetTaskResult_params['PageType'] = $PageTypePagingObjectStr"
-}
-)            
-        Get-TaskResult @GetTaskResult_params
-        $pagingBlock
-    }
-'@
-
-$TopPagingObjectBlock = @'
-@{
-            'Count' = 0
-            'Max' = $Top
-        }
-'@
-
-$SkipPagingObjectBlock = @'
-@{
-            'Count' = 0
-            'Max' = $Skip
-        }
-'@
-
-$PageResultPagingObjectBlock = @'
-@{
-            'Result' = $null
-        }
-'@
-
-$PageTypeObjectBlock = @'
-'$pageType' -as [Type]
-'@
-
-$PagingBlockStrGeneric = @'
-    
-        Write-Verbose -Message 'Flattening paged results.'
-        while (`$PageResult -and `$PageResult.Result -and (Get-Member -InputObject `$PageResult.Result -Name '$NextLinkName') -and `$PageResult.Result.'$NextLinkName' -and ((`$TopInfo -eq `$null) -or (`$TopInfo.Max -eq -1) -or (`$TopInfo.Count -lt `$TopInfo.Max))) {
-            `$PageResult.Result = `$null
-            Write-Debug -Message "Retrieving next page: `$(`$PageResult.Result.'$NextLinkName')"
-            $pagingOperationCall
-        }
-'@
-
-$PagingOperationCallFunction = @'
-`$TaskResult = $clientName$pagingOperations.$pagingOperationName(`$PageResult.Result.'$NextLinkName')
-            `$GetTaskResult_params['TaskResult'] = `$TaskResult
-            `$GetTaskResult_params['PageResult'] = `$PageResult
-            Get-TaskResult @GetTaskResult_params
-'@
-
-$PagingOperationCallCmdlet = @'
-$Cmdlet $CmdletArgs
 '@
 
 $successReturn = @'

@@ -329,7 +329,6 @@ function getPathCommandName(operationId: string): any {
           firstWord += unapprovedVerb.charAt(i);
         }
 
-        // If we're still running along the trie just fine, keep checking the next letter
         currentVerbCandidate += unapprovedVerb.charAt(i);
         if (ExistsVerb(currentVerbCandidate)) {
           // The latest verb match is also the longest verb match
@@ -575,7 +574,113 @@ function getOutputType(schema: any, modelsNamespace: string, definitionList: any
 
 
 
-function doParameterStuff(commandName: string, parametersToAdd: any[]): {} {
+function getPathFunctionBody(
+  ParameterSetDetails: any,
+  ODataExpressionBlock: string,
+  ParameterGroupsExpressionBlock: string,
+  GlobalParameters: string[],
+  SwaggerDict: any,
+  SwaggerMetaDict: any,
+  AddHttpClientHandler: boolean,
+  HostOverrideCommand: string,
+  AuthenticationCommand: string,
+  AuthenticationCommandArgumentName: string,
+  FlattenedParametersOnPSCmdlet: any,
+  ParameterAliasMapping: any,
+  GlobalParametersStatic: any,
+  FilterBlock: string
+): any {
+
+}
+
+
+function doParameterStuff(
+  commandName: string,
+  parametersToAdd: any[],
+  nonUniqueParameterSets: any[],
+  parameterSetDetails: any[],
+  isLongRunningOperation: boolean,
+  asJobParameterString: string,
+  pagingBlock: string,
+  pagingOperations: string | null,
+  nextLinkName: string,
+  pageType: string,
+  topParameterToAdd: any,
+  skipParameterToAdd: any,
+  clientName: string,
+  pagingOperationName: string,
+  cmdlet: string,
+  cmdletArgs: string): any {
+
+  let pagingOperationCall: string | null = null;
+  if (pagingOperations) {
+    pagingOperationCall = pagingOperationCallFunction(clientName, pagingOperations, pagingOperationName, nextLinkName);
+  }
+  else if (cmdlet) {
+    pagingOperationCall = pagingOperationCallCmdlet(cmdlet, cmdletArgs);
+  }
+
+  let pageResultPagingObjectStr: string | null = null;
+  let topPagingObjectStr: string | null = null;
+  let skipPagingObjectStr: string | null = null;
+  let pageTypePagingObjectStr: string | null = null;
+
+  if (pagingOperationCall) {
+    pagingBlock = pagingBlockStrGeneric(pagingOperationCall, nextLinkName);
+    pageResultPagingObjectStr = `
+@{
+            'Result' = $null
+        }
+`;
+    pageTypePagingObjectStr = pageTypeObjectBlock(pageType);
+    if (topParameterToAdd) {
+      topPagingObjectStr = `
+@{
+            'Count' = 0
+            'Max' = $Top
+        }
+`;
+    }
+
+    if (skipParameterToAdd) {
+      skipPagingObjectStr = `
+@{
+            'Count' = 0
+            'Max' = $Skip
+        }
+`;
+    }
+  }
+
+  let defaultParameterSetName: string = "";
+  let description: string = "";
+  let synopsis: string = "";
+  // For description, we're currently using the default parameter set's description, since concatenating multiple descriptions doesn't ever really work out well.
+  if (nonUniqueParameterSets.length > 1) {
+    // Pick the highest priority set among nonUniqueParameterSets, but really it doesn't matter, cause...
+    // Print warning that this generated cmdlet has ambiguous parameter sets
+    const defaultParameterSet = nonUniqueParameterSets.sort((a, b) => a.Priority - b.Priority)[0];
+    defaultParameterSetName = defaultParameterSet.ParameterSetName;
+    description = defaultParameterSet.Description;
+    synopsis = defaultParameterSet.Synopsis;
+    logWarning(`The generated cmdlet '${commandName}' contains ambiguous parameter sets. This is due to automatic merging of two or more similar paths.`)
+  }
+  else if (nonUniqueParameterSets.length === 1) {
+    // If there's only one non-unique, we can prevent errors by making this the default
+    defaultParameterSetName = nonUniqueParameterSets[0].ParameterSetName;
+    description = nonUniqueParameterSets[0].Description;
+    synopsis = nonUniqueParameterSets[0].Synopsis;
+  }
+  else {
+    // Pick the highest priority set among all sets
+    const defaultParameterSet = parameterSetDetails.sort((a, b) => a.Priority - b.Priority)[0];
+    defaultParameterSetName = defaultParameterSet.ParameterSetName;
+    description = defaultParameterSet.Description;
+    synopsis = defaultParameterSet.Synopsis;
+  }
+  const commandHelp = helpDescStr(synopsis, description);
+
+
   const parameterAliasMapping = {};
   let oDataExpression = "";
   let paramBlock = "";
@@ -689,12 +794,25 @@ function doParameterStuff(commandName: string, parametersToAdd: any[]): {} {
 
   const oDataExpressionBlock = oDataExpression !== "" ? oDataExpressionBlockStr(oDataExpression.trim()) : "";
 
+  paramBlock = paramBlock.replace(/[\s,]*$/, "");
+
+  // isLongRunningOperation stuff
+  const paramBlockReplaceStr = isLongRunningOperation
+    ? (paramBlock ? `${paramBlock},\r\n${asJobParameterString}` : asJobParameterString)
+    : paramBlock;
+  const pathFunctionBody = isLongRunningOperation
+    ? pathFunctionBodyAsJob(pagingBlock, topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr)
+    : pathFunctionBodySynch(pagingBlock, topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr);
+
   return {
-    paramBlock,
     paramHelp,
     parameterGroupsExpressionBlock,
     oDataExpressionBlock,
-    parameterAliasMapping
+    parameterAliasMapping,
+    defaultParameterSetName,
+    commandHelp,
+    paramBlockReplaceStr,
+    pathFunctionBody
   };
 }
 
@@ -739,4 +857,219 @@ const oDataExpressionBlockStr = (oDataExpression: string) => `
   $oDataQuery = ""
     ${oDataExpression}
     $oDataQuery = $oDataQuery.Trim("&")
+`;
+
+const helpDescStr = (synopsis: string, description: string) => ` 
+.SYNOPSIS
+    ${synopsis}
+
+.DESCRIPTION
+    ${description}
+`;
+
+const pathFunctionBodyHelper = (topPagingObjectStr: string, skipPagingObjectStr: string, pageResultPagingObjectStr: string, pageTypePagingObjectStr: string): string => {
+  if (topPagingObjectStr) {
+    return `
+            $TopInfo = ${topPagingObjectStr}
+            $GetTaskResult_params['TopInfo'] = $TopInfo`;
+  }
+  if (skipPagingObjectStr) {
+    return `
+            $SkipInfo = ${skipPagingObjectStr}
+            $GetTaskResult_params['SkipInfo'] = $SkipInfo`;
+  }
+  if (pageResultPagingObjectStr) {
+    return `
+            $PageResult = ${pageResultPagingObjectStr}
+            $GetTaskResult_params['PageResult'] = $PageResult`;
+  }
+  if (pageTypePagingObjectStr) {
+    return `
+            $GetTaskResult_params['PageType'] = ${pageTypePagingObjectStr}`;
+  }
+  return "";
+};
+
+const pathFunctionBodyAsJob = (pagingBlock: string, topPagingObjectStr: string, skipPagingObjectStr: string, pageResultPagingObjectStr: string, pageTypePagingObjectStr: string) => `
+Write-Verbose -Message "Waiting for the operation to complete."
+
+    $PSSwaggerJobScriptBlock = {
+        [CmdletBinding()]
+        param(    
+            [Parameter(Mandatory = $true)]
+            [System.Threading.Tasks.Task]
+            $TaskResult,
+
+            [Parameter(Mandatory = $true)]
+			[string]
+			$TaskHelperFilePath
+        )
+        if ($TaskResult) {
+            . $TaskHelperFilePath
+            $GetTaskResult_params = @{
+                TaskResult = $TaskResult
+            }
+${pathFunctionBodyHelper(topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr)}            
+            Get-TaskResult @GetTaskResult_params
+            ${pagingBlock || ""}
+        }
+    }
+
+    $PSCommonParameters = Get-PSCommonParameter -CallerPSBoundParameters $PSBoundParameters
+    $TaskHelperFilePath = Join-Path -Path $ExecutionContext.SessionState.Module.ModuleBase -ChildPath 'Get-TaskResult.ps1'
+    if($AsJob)
+    {
+        $ScriptBlockParameters = New-Object -TypeName 'System.Collections.Generic.Dictionary[string,object]'
+        $ScriptBlockParameters['TaskResult'] = $TaskResult
+        $ScriptBlockParameters['AsJob'] = $AsJob
+        $ScriptBlockParameters['TaskHelperFilePath'] = $TaskHelperFilePath
+        $PSCommonParameters.GetEnumerator() | ForEach-Object { $ScriptBlockParameters[$_.Name] = $_.Value }
+
+        Start-PSSwaggerJobHelper -ScriptBlock $PSSwaggerJobScriptBlock \`
+                                     -CallerPSBoundParameters $ScriptBlockParameters \`
+                                     -CallerPSCmdlet $PSCmdlet \`
+                                     @PSCommonParameters
+    }
+    else
+    {
+        Invoke-Command -ScriptBlock $PSSwaggerJobScriptBlock \`
+                       -ArgumentList $TaskResult,$TaskHelperFilePath \`
+                       @PSCommonParameters
+    }
+`;
+
+const pathFunctionBodySynch = (pagingBlock: string, topPagingObjectStr: string, skipPagingObjectStr: string, pageResultPagingObjectStr: string, pageTypePagingObjectStr: string) => `
+if ($TaskResult) {
+        $GetTaskResult_params = @{
+            TaskResult = $TaskResult
+        }
+${pathFunctionBodyHelper(topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr)}
+        Get-TaskResult @GetTaskResult_params
+        ${pagingBlock || ""}
+    }
+`;
+
+const advFnSignatureForPath = (
+  commandName: string,
+  commandHelp: string,
+  paramHelp: string,
+  outputTypeBlock: string,
+  paramBlockReplaceStr: string,
+  dependencyInitFunction: string,
+  body: string,
+  pathFunctionBody: string,
+  defaultParameterSetName: string
+) => `
+<#
+${commandHelp}
+${paramHelp}
+#>
+function ${commandName} {
+    ${outputTypeBlock || ""}[CmdletBinding(DefaultParameterSetName='${defaultParameterSetName}')]
+    param(${paramBlockReplaceStr}
+    )
+
+    Begin {
+	    ${dependencyInitFunction}
+        $tracerObject = $null
+        if (('continue' -eq $DebugPreference) -or ('inquire' -eq $DebugPreference)) {
+            $oldDebugPreference = $global:DebugPreference
+			      $global:DebugPreference = "continue"
+            $tracerObject = New-PSSwaggerClientTracing
+            Register-PSSwaggerClientTracing -TracerObject $tracerObject
+        }
+	}
+
+    Process {
+    ${body}
+
+    ${pathFunctionBody}
+    }
+
+    End {
+        if ($tracerObject) {
+            $global:DebugPreference = $oldDebugPreference
+            Unregister-PSSwaggerClientTracing -TracerObject $tracerObject
+        }
+    }
+}
+`;
+
+const pagingOperationCallFunction = (clientName: string, pagingOperations: string, pagingOperationName: string, nextLinkName: string) => `
+$TaskResult = ${clientName}${pagingOperations}.${pagingOperationName}($PageResult.Result.'${nextLinkName}')
+            $GetTaskResult_params['TaskResult'] = $TaskResult
+            $GetTaskResult_params['PageResult'] = $PageResult
+            Get-TaskResult @GetTaskResult_params
+`;
+
+const pagingOperationCallCmdlet = (cmdlet: string, cmdletArgs: string) => `
+${cmdlet} ${cmdletArgs}
+`;
+
+const pagingBlockStrGeneric = (pagingOperationCall: string, nextLinkName: string) => `
+    
+        Write-Verbose -Message 'Flattening paged results.'
+        while ($PageResult -and $PageResult.Result -and (Get-Member -InputObject $PageResult.Result -Name '${nextLinkName}') -and $PageResult.Result.'${nextLinkName}' -and (($TopInfo -eq $null) -or ($TopInfo.Max -eq -1) -or ($TopInfo.Count -lt $TopInfo.Max))) {
+            $PageResult.Result = $null
+            Write-Debug -Message "Retrieving next page: $($PageResult.Result.'${nextLinkName}')"
+            ${pagingOperationCall}
+        }
+`;
+
+const pageTypeObjectBlock = (pageType: string) => `
+'${pageType}' -as [Type]
+`;
+
+const filterBlockStrHelper = (clientSideFilter: any): string => {
+  let result = "";
+  let prependComma = false;
+  for (const filter of clientSideFilter.Filters) {
+    if (prependComma) {
+      result += ", "
+    } else {
+      prependComma = true;
+    }
+    result += `@{
+    'Type' = '${filter.Type}'
+    'Value' = $${filter.Parameter}
+    'Property' = '${filter.Property}'
+`;
+    for (const property of filter.NoteProperty) {
+      if ((property.Name === 'Type') || (property.Name === 'Parameter') || (property.Name === 'Property') || (property.Name === 'AppendParameterInfo')) {
+        continue;
+      }
+      result += `
+    '${property.Name}' = '${filter[property.Name]}'`;
+    }
+    result += "}";
+  }
+  return result;
+};
+
+const filterBlockStr = (commandName: string, clientSideFilter: any, matchingParameters: string[]) => `
+$filterInfos = @(
+${filterBlockStrHelper(clientSideFilter)})
+$applicableFilters = Get-ApplicableFilters -Filters $filterInfos
+if ($applicableFilters | Where-Object { $_.Strict }) {
+    Write-Verbose -Message 'Performing server-side call ''${(clientSideFilter.ServerSideResultCommand === '.' ? commandName : clientSideFilter.ServerSideResultCommand)} -${matchingParameters.join(" -")}'''
+    $serverSideCall_params = @{
+${matchingParameters.map(matchingParam => `       '${matchingParam}' = $${matchingParam}\r\n`).join(``)}
+}
+
+$serverSideResults =${(clientSideFilter.ServerSideResultCommand === '.' ? commandName : clientSideFilter.ServerSideResultCommand)} @serverSideCall_params
+foreach($serverSideResult in $serverSideResults) {
+    $valid = $true
+    foreach($applicableFilter in $applicableFilters) {
+        if (-not(Test - FilteredResult - Result$serverSideResult -Filter $applicableFilter.Filter)) {
+            $valid = $false
+            break
+        }
+    }
+
+    if ($valid) {
+        $serverSideResult
+    }
+}
+return
+}
 `;

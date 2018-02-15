@@ -40,7 +40,6 @@ Please refer to https://github.com/PowerShell/PSSwagger/blob/developer/README.md
         'SwaggerUtils.psm1',
         'Test-CoreRequirements.ps1',
         'Test-FullRequirements.ps1',
-        'Trie.ps1',
         'Utilities.psm1',
         'ServiceTypes\azure.PSMeta.json',
         'ServiceTypes\azure_stack.PSMeta.json'

@@ -8,7 +8,7 @@
 #
 #########################################################################################
 
-$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\Templates.ts")
+$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
@@ -915,10 +915,7 @@ function New-SwaggerSpecDefinitionCommand
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     
     $commandName = "New-$($FunctionDetails.Name)Object"
-
-    $description = $FunctionDetails.description
-    $synopsis = $FunctionDetails.synopsis
-    $commandHelp = $executionContext.InvokeCommand.ExpandString($helpDescStr)
+    $commandHelp = (Eval-Ts $tsTemplates "helpDescStr" $FunctionDetails.synopsis, $FunctionDetails.description)
 
     [string]$paramHelp = ""
     $paramblock = ""

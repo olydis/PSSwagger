@@ -88,22 +88,23 @@ Add-Type -ReferencedAssemblies $srcTsAssem -TypeDefinition $srcTsInvoke -Languag
 
 function Eval-Ts {
     [CmdletBinding()]
-    Param ($code, $func, [object[]] $args)
+    Param ($code, $func, [object[]] $arg)
     PROCESS {
         $obj = New-Object PSObject
-        $obj | Add-Member Noteproperty args $args
-        $args = $obj | ConvertTo-JSON -Compress -Depth 100
-        If (-not $args.StartsWith('{"args":[')) {
+        $obj | Add-Member Noteproperty args $arg
+        # Try { $arg = $obj | ConvertTo-JSON -Compress -Depth 100 } Catch { Write-Error "$([Newtonsoft.Json.JsonConvert]::SerializeObject($obj))" }
+        $arg = $obj | ConvertTo-JSON -Compress -Depth 100
+        If (-not $arg.StartsWith('{"args":[')) {
             $list = New-Object "System.Collections.ArrayList"
-            $list.Add($args)
-            $args = $list
+            $list.Add($arg)
+            $arg = $list
 
             $obj = New-Object PSObject
-            $obj | Add-Member Noteproperty args $args
-            $args = $obj | ConvertTo-JSON -Compress -Depth 100
+            $obj | Add-Member Noteproperty args $arg
+            $arg = $obj | ConvertTo-JSON -Compress -Depth 100
         }
-        Write-Warning "TS invoke start: $func($args)"
-        $res = [NodeTs]::Eval($code, $func, $args)
+        Write-Warning "TS invoke start: $func($arg)"
+        $res = [NodeTs]::Eval($code, $func, $arg)
         Write-Warning "TS invoke end: $res"
         If ($res -eq "undefined") {
             return $null
