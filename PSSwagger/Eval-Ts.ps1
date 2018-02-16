@@ -9,7 +9,7 @@ public static class NodeTs
 {
 public static object Eval(string code, string func, string args)
 {
-    code = code + ";\n console.log(JSON.stringify(" + func + ".apply(null, JSON.parse(new Buffer(process.argv.reverse()[0], 'base64').toString('ascii')).args)))";
+    code = code + ";\n console.log(JSON.stringify(" + func + ".apply(null, require(process.argv.reverse()[0]).args)))";
 
     string target = Path.GetTempPath() + "ts" + code.GetHashCode();
     if (!File.Exists(target + ".js"))
@@ -35,7 +35,7 @@ public static object Eval(string code, string func, string args)
         {
 			var stdout = proc.StandardOutput.ReadLine() + "\n";
             if (stdout.Contains("TS2304"))
-                if (stdout.Contains("Buffer") || stdout.Contains("process"))
+                if (stdout.Contains("Buffer") || stdout.Contains("process") || stdout.Contains("require"))
                     continue;
             stderr += stdout;
         }
@@ -48,10 +48,11 @@ public static object Eval(string code, string func, string args)
     }
 
     {
+        File.WriteAllText(target + ".json", args);
         var proc = new Process {
             StartInfo = new ProcessStartInfo {
                 FileName = "cmd.exe",
-                Arguments = "/c node " + target + ".js " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(args)),
+                Arguments = "/c node " + target + ".js " + target + ".json",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

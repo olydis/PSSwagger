@@ -560,200 +560,756 @@ function getResponse(responses: any, namespace: string, models: string, definiti
 
 
 
-// function getPathFunctionBody(
-//   parameterSetDetails: any,
-//   oDataExpressionBlock: string,
-//   parameterGroupsExpressionBlock: string,
-//   globalParameters: string[],
-//   swaggerDict: any,
-//   swaggerMetaDict: any,
-//   addHttpClientHandler: boolean,
-//   hostOverrideCommand: string,
-//   authenticationCommand: string,
-//   authenticationCommandArgumentName: string,
-//   flattenedParametersOnPSCmdlet: any,
-//   parameterAliasMapping: any,
-//   globalParametersStatic: any,
-//   filterBlock: string
-// ): any {
+function getPathFunctionBody(
+  parameterSetDetails: any,
+  oDataExpressionBlock: string,
+  parameterGroupsExpressionBlock: string,
+  globalParameters: string[],
+  swaggerDictInfo: any,
+  swaggerDictDefinitions: any,
+  useAzureCsharpGenerator: boolean,
+  addHttpClientHandler: boolean,
+  hostOverrideCommand: string,
+  authenticationCommand: string,
+  authenticationCommandArgumentName: string,
+  flattenedParametersOnPSCmdlet: any,
+  parameterAliasMapping: any,
+  globalParametersStatic: any,
+  filterBlock: string
+): any {
 
-//     let outputTypeBlock = null;
-//     const info = swaggerDict['Info'];
-//     const definitionList = swaggerDict['Definitions'];
-//     const useAzureCsharpGenerator = swaggerMetaDict['UseAzureCsharpGenerator'];
-//     const infoVersion = info['infoVersion'];
-//     const clientName = '$' + info['ClientTypeName'];
-//     const namespace = info.namespace;
-//     const fullClientTypeName = namespace + '.' + info['ClientTypeName']
-//     const subscriptionId = null;
-//     const baseUri = null;
-//     let advancedFunctionEndCodeBlock = '';
-//     let getServiceCredentialStr = 'Get-AzServiceCredential';
+  let outputTypeBlock = null;
+  const info = swaggerDictInfo;
+  const definitionList = swaggerDictDefinitions;
+  const infoVersion = info.infoVersion;
+  const clientName = '$' + info.ClientTypeName;
+  const namespace = info.NameSpace;
+  const fullClientTypeName = namespace + '.' + info.ClientTypeName;
+  const subscriptionId = null;
+  const baseUri = null;
+  let advancedFunctionEndCodeBlock = '';
+  let getServiceCredentialStr = 'Get-AzServiceCredential';
 
-//     let parameterSetBasedMethodStr = '';
-//     let resourceIdParamCodeBlock = '';
-//     for (const parameterSetDetail of parameterSetDetails) {
+  let parameterSetBasedMethodStr = '';
+  let resourceIdParamCodeBlock = '';
+  for (const parameterSetDetail of parameterSetDetails) {
 
-//         if((parameterSetDetail.OperationId !== parameterSetDetail.ParameterSetName) &&
-//           (parameterSetDetail.ParameterSetName.toLowerCase().startsWith('InputObject_'.toLowerCase()) ||
-//           parameterSetDetail.ParameterSetName.toLowerCase().startsWith('ResourceId_'.toLowerCase()))) {
-//             continue;
-//         }
+    if ((parameterSetDetail.OperationId !== parameterSetDetail.ParameterSetName) &&
+      (parameterSetDetail.ParameterSetName.toLowerCase().startsWith('InputObject_'.toLowerCase()) ||
+        parameterSetDetail.ParameterSetName.toLowerCase().startsWith('ResourceId_'.toLowerCase()))) {
+      continue;
+    }
 
-//         // Responses isn't actually used right now, but keeping this when we need to handle responses per parameter set
-//         const responses = parameterSetDetail.Responses;
-//         const operationId = parameterSetDetail.OperationId;
-//         const parameterSetName = parameterSetDetail.ParameterSetName;
-//         const methodName = parameterSetDetail.MethodName;
-//         const operations = parameterSetDetail.Operations;
-//         const paramList = parameterSetDetail.ExpandedParamList;
-//         let cmdlet = '';
-//         if (parameterSetDetail.ContainsKey('Cmdlet') && parameterSetDetail.Cmdlet) {
-//             cmdlet = parameterSetDetail.Cmdlet;
-//         }
+    // Responses isn't actually used right now, but keeping this when we need to handle responses per parameter set
+    const responses = parameterSetDetail.Responses;
+    const operationId = parameterSetDetail.OperationId;
+    const parameterSetName = parameterSetDetail.ParameterSetName;
+    const methodName = parameterSetDetail.MethodName;
+    const operations = parameterSetDetail.Operations;
+    const paramList = parameterSetDetail.ExpandedParamList;
+    let cmdlet = parameterSetDetail.Cmdlet || '';
+    let cmdletArgs = parameterSetDetail.CmdletArgs || '';
 
-//         let cmdletArgs = ''
-//         if (parameterSetDetail.ContainsKey('CmdletArgs') && parameterSetDetail.CmdletArgs) {
-//             cmdletArgs = parameterSetDetail.CmdletArgs;
-//         }
+    if (responses) {
+      const getResponseResult = getResponse(responses, namespace, info.Models, definitionList);
+      // For now, use the first non-empty output type
+      if (!outputTypeBlock && getResponseResult.outputTypeBlock) {
+        outputTypeBlock = getResponseResult.outputTypeBlock;
+      }
+    }
 
-//       let cmdletParameter = ''
-//         if (parameterSetDetail.ContainsKey('CmdletParameter') && parameterSetDetail.CmdletParameter) {
-//             cmdletParameter = parameterSetDetail.CmdletParameter;
-//         }
+    const methodBlock = methodName
+      ? methodBlockFunctionCall(clientName, operations, methodName, paramList)
+      : methodBlockCmdletCall(cmdlet, cmdletArgs);
+    let additionalConditionStart = '';
+    let additionalConditionEnd = '';
+    if (parameterSetDetail.AdditionalConditions) {
+      if (parameterSetDetail.AdditionalConditions.length === 1) {
+        additionalConditionStart = `      if (${parameterSetDetail.AdditionalConditions[0]}) {\r\n`;
+        additionalConditionEnd = "\r\n      } else { $taskResult = $null }";
+      } else if (parameterSetDetail.AdditionalConditions.length > 1) {
+        additionalConditionStart = "      if (";
+        for (const condition of parameterSetDetail.AdditionalConditions) {
+          additionalConditionStart += `(${condition}) -and`;
+        }
+        additionalConditionStart = additionalConditionStart.slice(0, -5);
+        additionalConditionStart = ") {\r\n"
+        additionalConditionEnd = "\r\n      } else { $taskResult = $null }"
+      }
+    }
 
-//         if (responses) {
-//             const responseBodyParams = {
-//                                     responses: responses.PSObject.Properties,
-//                                     namespace: namespace,
-//                                     definitionList: definitionList,
-//                                     Models: info.Models
-//                                 };
+    let ParameterSetConditions = [`'${parameterSetDetail.ParameterSetName}' -eq $PsCmdlet.ParameterSetName`];
+    if (parameterSetDetail.ClonedParameterSetNames) {
+      let CloneParameterSetConditions = []
+      for (const cpsn of parameterSetDetail.ClonedParameterSetNames) {
+        const p = `'${cpsn}' -eq $PsCmdlet.ParameterSetName`;
+        CloneParameterSetConditions.push(p);
+        ParameterSetConditions.push(p);
+      }
 
-//             const getResponseResult = Get-Response @responseBodyParams
-//             // For now, use the first non-empty output type
-//             if ((-not $outputTypeBlock) -and $GetResponseResult -and $GetResponseResult.OutputTypeBlock) {
-//                 $outputTypeBlock = $GetResponseResult.OutputTypeBlock
-//             }
-//         }
+      if (CloneParameterSetConditions) {
+        if (parameterSetDetail.ResourceIdParameters) {
+          resourceIdParamCodeBlock += `if(${CloneParameterSetConditions.join(' -or ')}) {
+            $GetArmResourceIdParameterValue_params = @{
+            IdTemplate = '${parameterSetDetail.EndpointRelativePath}'
+        }
 
-//         if ($methodName) {
-//             $methodBlock = $executionContext.InvokeCommand.ExpandString($methodBlockFunctionCall)
-//         } else {
-//             $methodBlock = $executionContext.InvokeCommand.ExpandString($methodBlockCmdletCall)
-//         }
-//         $additionalConditionStart = ''
-//         $additionalConditionEnd = ''
-//         if ($parameterSetDetail.ContainsKey('AdditionalConditions') -and $parameterSetDetail.AdditionalConditions) {
-//             if ($parameterSetDetail.AdditionalConditions.Count -eq 1) {
-//                 $additionalConditionStart = "      if ($($parameterSetDetail.AdditionalConditions[0])) {$([Environment]::NewLine)"
-//                 $additionalConditionEnd = "$([Environment]::NewLine)      } else { `$taskResult = `$null }"
-//             } elseif ($parameterSetDetail.AdditionalConditions.Count -gt 1) {
-//                 $additionalConditionStart = "      if ("
-//                 foreach ($condition in $parameterSetDetail.AdditionalConditions) {
-//                     $additionalConditionStart += "($condition) -and"
-//                 }
-//                 $additionalConditionStart = $additionalConditionStart.Substring(0, $additionalConditionStart.Length-5)
-//                 $additionalConditionStart = ") {$([Environment]::NewLine)"
-//                 $additionalConditionEnd = "$([Environment]::NewLine)      } else { `$taskResult = `$null }"
-//             }
-//         }
+        if('ResourceId_${parameterSetDetail.ParameterSetName}' -eq $PsCmdlet.ParameterSetName) {
+            $GetArmResourceIdParameterValue_params['Id'] = $ResourceId
+          }
+        else {
+            $GetArmResourceIdParameterValue_params['Id'] = $InputObject.Id
+          }
+          $ArmResourceIdParameterValues = Get-ArmResourceIdParameterValue @GetArmResourceIdParameterValue_params`;
+          for (const p of parameterSetDetail.ResourceIdParameters) {
+            resourceIdParamCodeBlock += `
+        $${p} = $ArmResourceIdParameterValues['${p}']\n`;
+          }
+          resourceIdParamCodeBlock += "    }";
+        }
+      }
+    }
 
-//         $ParameterSetConditions = @("'$($parameterSetDetail.ParameterSetName)' -eq `$PsCmdlet.ParameterSetName")
-//         if($parameterSetDetail.ContainsKey('ClonedParameterSetNames') -and $parameterSetDetail.ClonedParameterSetNames) {
-//             $CloneParameterSetConditions = @()
-//             $parameterSetDetail.ClonedParameterSetNames | ForEach-Object {
-//                 $CloneParameterSetConditions += @("'$_' -eq `$PsCmdlet.ParameterSetName")
-//             }
+    const parameterSetConditionsStr = ParameterSetConditions.join(' -or ');
+    if (parameterSetBasedMethodStr) {
+      // Add the elseif condition
+      parameterSetBasedMethodStr += parameterSetBasedMethodStrElseIfCase(parameterSetConditionsStr, additionalConditionStart, methodBlock, additionalConditionEnd);
+    } else {
+      // Add the beginning if condition
+      parameterSetBasedMethodStr += parameterSetBasedMethodStrIfCase(parameterSetConditionsStr, additionalConditionStart, methodBlock, additionalConditionEnd);
+    }
+  }
 
-//             if($CloneParameterSetConditions) {
-//                 $ParameterSetConditions += $CloneParameterSetConditions
+  // Prepare the code block for constructing the actual operation parameters which got flattened on the generated cmdlet.
+  let flattenedParametersBlock = '';
+  for (const name in flattenedParametersOnPSCmdlet) {
+    let definitionDetails = flattenedParametersOnPSCmdlet[name];
+    let flattenedParametersList = definitionDetails.ParametersTable.map(p => p.Name);
+    let flattenedParametersListStr = flattenedParametersList
+      ? `@('${flattenedParametersList.join("', '")}')`
+      : '';
 
-//                 if($parameterSetDetail.ContainsKey('ResourceIdParameters') -and $parameterSetDetail.ResourceIdParameters) {
-//                     $ResourceIdParamCodeBlock += "if($($CloneParameterSetConditions -join ' -or ')) {
-//         `$GetArmResourceIdParameterValue_params = @{
-//             IdTemplate = '$($parameterSetDetail.EndpointRelativePath)'
-//         }
+    flattenedParametersBlock += constructFlattenedParameter(flattenedParametersListStr, definitionDetails.Name, name);
+  }
 
-//         if('ResourceId_$($parameterSetDetail.ParameterSetName)' -eq `$PsCmdlet.ParameterSetName) {
-//             `$GetArmResourceIdParameterValue_params['Id'] = `$ResourceId
-//         }
-//         else {
-//             `$GetArmResourceIdParameterValue_params['Id'] = `$InputObject.Id
-//         }
-//         `$ArmResourceIdParameterValues = Get-ArmResourceIdParameterValue @GetArmResourceIdParameterValue_params"
-//                     $parameterSetDetail.ResourceIdParameters | ForEach-Object {
-//                         $ResourceIdParamCodeBlock += "
-//         `$$_ = `$ArmResourceIdParameterValues['$_']`n"
-//                     }
-//                     $ResourceIdParamCodeBlock += "    }"
-//                 }
-//             }
-//         }
-//         $ParameterSetConditionsStr = $ParameterSetConditions -join ' -or '
+  let parameterAliasMappingBlock = Object.keys(parameterAliasMapping)
+    .map(key => `$${key} = $${parameterAliasMapping[key]}\n`)
+    .join('');
 
-//         if ($parameterSetBasedMethodStr) {
-//             # Add the elseif condition
-//             $parameterSetBasedMethodStr += $executionContext.InvokeCommand.ExpandString($parameterSetBasedMethodStrElseIfCase)
-//         } else {
-//             # Add the beginning if condition
-//             $parameterSetBasedMethodStr += $executionContext.InvokeCommand.ExpandString($parameterSetBasedMethodStrIfCase)
-//         }
-//     }
+  let bodyHelper1 = "";
 
-//     # Prepare the code block for constructing the actual operation parameters which got flattened on the generated cmdlet.
-//     $FlattenedParametersBlock = ''
-//     $FlattenedParametersOnPSCmdlet.GetEnumerator() | ForEach-Object {
-//         $SwaggerOperationParameterName = $_.Name        
-//         $DefinitionDetails = $_.Value
-//         $FlattenedParamType = $DefinitionDetails.Name
+  if (authenticationCommand) {
+    bodyHelper1 += `
+    $NewServiceClient_params['AuthenticationCommand'] = @'
+    ${authenticationCommand}
+'@ `;
+    if (authenticationCommandArgumentName) {
+      bodyHelper1 += `
+    $NewServiceClient_params['AuthenticationCommandArgumentList'] = $${authenticationCommandArgumentName}`;
+    }
+  }
+  if (addHttpClientHandler) {
+    bodyHelper1 += `
+    $NewServiceClient_params['AddHttpClientHandler'] = $true
+    $NewServiceClient_params['Credential']           = $Credential`;
+  }
+  if (hostOverrideCommand) {
+    bodyHelper1 += `
+    $NewServiceClient_params['HostOverrideCommand'] = @'
+    ${hostOverrideCommand}
+'@`;
+  }
+  if (globalParameters || globalParametersStatic) {
+    bodyHelper1 += `
+    $GlobalParameterHashtable = @{}
+    $NewServiceClient_params['GlobalParameterHashtable'] = $GlobalParameterHashtable
+`;
+  }
+  if (globalParameters) {
+    for (const parameter of globalParameters) {
+      bodyHelper1 += `
+    $GlobalParameterHashtable['${parameter}'] = $null
+    if($PSBoundParameters.ContainsKey('${parameter}')) {
+        $GlobalParameterHashtable['${parameter}'] = $PSBoundParameters['${parameter}']
+    }
+`;
+    }
+  }
+  if (globalParametersStatic) {
+    for (const name in globalParametersStatic) {
+      bodyHelper1 += `
+    $GlobalParameterHashtable['${name}'] = ${globalParametersStatic[name]}
+`;
+    }
+  }
 
-//         $FlattenedParametersList = $DefinitionDetails.ParametersTable.GetEnumerator() | ForEach-Object { $_.Name }
-//         $FlattenedParametersListStr = ''
-//         if($FlattenedParametersList) {
-//             $FlattenedParametersListStr = "@('$($flattenedParametersList -join "', '")')"
-//         }
+  let bodyHelper2 = "";
+  if (oDataExpressionBlock) bodyHelper2 += oDataExpressionBlock;
+  if (parameterGroupsExpressionBlock) bodyHelper2 += parameterGroupsExpressionBlock;
+  if (flattenedParametersBlock) bodyHelper2 += flattenedParametersBlock;
+  if (parameterAliasMappingBlock) bodyHelper2 += parameterAliasMappingBlock;
+  if (resourceIdParamCodeBlock) bodyHelper2 += resourceIdParamCodeBlock;
 
-//         $FlattenedParametersBlock += $executionContext.InvokeCommand.ExpandString($constructFlattenedParameter)
-//     }
 
-//     $ParameterAliasMappingBlock = ''
-//     $ParameterAliasMapping.GetEnumerator() | ForEach-Object {
-//         $ParameterAliasMappingBlock += "`$$($_.Name) = `$$($_.Value)`n"
-//     }
+  const body = `
 
-//     $body = $executionContext.InvokeCommand.ExpandString($functionBodyStr)
+    $ErrorActionPreference = 'Stop'
 
-//     $bodyObject = @{ OutputTypeBlock = $outputTypeBlock;
-//                      Body = $body;
-//                     }
+    $NewServiceClient_params = @{
+        FullClientTypeName = '${fullClientTypeName}'
+    }
+${bodyHelper1}
+    ${clientName} = New-ServiceClient @NewServiceClient_params
+${bodyHelper2}
+${filterBlock || ""}
+    ${parameterSetBasedMethodStr} else {
+        Write-Verbose -Message 'Failed to map parameter set to operation method.'
+        throw 'Module failed to find operation to execute.'
+    }
+`;
 
-//     $result = @{
-//         BodyObject = $bodyObject
-//         ParameterSetDetails = $ParameterSetDetails
-//     }
+  return {
+    BodyObject: {
+      OutputTypeBlock: outputTypeBlock,
+      Body: body
+    },
+    ParameterSetDetails: parameterSetDetails
+  };
+}
 
-//     return $result
-// }
+function addUniqueParameter(parameterDetails: any, candidateParameterDetails: any, parameterSetName: string, parametersToAdd: any, parameterHitCount: any) {
+  const parameterName = candidateParameterDetails.Name;
+  if (parameterDetails.IsParameter) {
+    if (!parameterHitCount[parameterName]) {
+      parameterHitCount[parameterName] = 0;
+    }
 
+    parameterHitCount[parameterName]++;
+    if (!parametersToAdd[parameterName]) {
+      parametersToAdd[parameterName] = {
+        // We can grab details like Type, Name, ValidateSet from any of the parameter definitions
+        Details: candidateParameterDetails,
+        ParameterSetInfo: {
+          ParameterSetName: {
+            Name: parameterSetName,
+            Mandatory: candidateParameterDetails.Mandatory
+          }
+        }
+      };
+    }
+    else {
+      parametersToAdd[parameterName].ParameterSetInfo[parameterSetName] = {
+        Name: parameterSetName,
+        Mandatory: candidateParameterDetails.Mandatory
+      }
+    }
+  }
+}
+
+function getValueText(obj: any) {
+  switch (typeof obj) {
+    case "string": return `'${obj}'`;
+    case "boolean": return `$${obj}`;
+    default: return obj;
+  }
+}
 
 function doParameterStuff(
-  commandName: string,
-  parametersToAdd: any[],
-  nonUniqueParameterSets: any[],
-  parameterSetDetails: any[],
-  isLongRunningOperation: boolean,
   asJobParameterString: string,
-  pagingBlock: string,
-  pagingOperations: string | null,
-  nextLinkName: string,
-  pageType: string,
-  topParameterToAdd: any,
-  skipParameterToAdd: any,
   clientName: string,
-  pagingOperationName: string,
-  cmdlet: string,
-  cmdletArgs: string): any {
+  swaggerDictSecurity: any,
+  swaggerDictSecurityDefinitions: any,
+  swaggerDictInfo: any,
+  swaggerDictDefinitions: any,
+  swaggerDictCommandDefaults: any,
+  isNextPageOperation: boolean,
+  useAzureCsharpGenerator: boolean,
+  psCodeGen: any,
+  definitionFunctionsDetails: any,
+  pathFunctionDetails: any,
+  functionDetails: any): any {
+
+  const commandName = functionDetails.CommandName;
+  const parameterSetDetails = functionDetails.ParameterSetDetails;
+  const isLongRunningOperation = functionDetails['x-ms-long-running-operation'];
+
+  let parametersToAdd: any = {};
+  let flattenedParametersOnPSCmdlet = {};
+  let parameterHitCount = {};
+  let globalParameters = [];
+  let globalParametersStatic = {};
+  let filterBlock = null;
+  // Process global metadata for commands
+  if (swaggerDictCommandDefaults) {
+    for (const entry in swaggerDictCommandDefaults) {
+      globalParametersStatic[entry] = getValueText(swaggerDictCommandDefaults[entry]);
+    }
+  }
+
+  // Process metadata for the overall command
+  if ('Metadata' in functionDetails) {
+    if (functionDetails.Metadata.ClientParameters) {
+      for (const property of functionDetails.Metadata.ClientParameters) {
+        globalParametersStatic[property.Name] = getValueText(functionDetails.Metadata.ClientParameters[property.Name]);
+      }
+    }
+    if (functionDetails.Metadata.clientSideFilters) {
+      for (const clientSideFilter of functionDetails.Metadata.ClientSideFilters) {
+        for (const filter of clientSideFilter.Filters) {
+          if (filter.Type === 'wildcard') {
+            if (!filter.Character) {
+              filter.Character = psCodeGen['defaultWildcardChar'];
+            }
+          }
+        }
+        const matchingParameters: string[] = [];
+        let serverSideFunctionDetails = null;
+        if (clientSideFilter.ServerSideResultCommand === '.') {
+          serverSideFunctionDetails = functionDetails;
+        }
+        else {
+          serverSideFunctionDetails = pathFunctionDetails[clientSideFilter.ServerSideResultCommand];
+        }
+        if (!serverSideFunctionDetails) {
+          logWarning(`Couldn't find server-side result operation: ${clientSideFilter.ServerSideResultCommand}`);
+        }
+        else {
+          const serverSideParameterSet = serverSideFunctionDetails['ParameterSetDetails'].filter(x => x.OperationId === clientSideFilter.ServerSideResultParameterSet);
+          if (!serverSideParameterSet) {
+            // Warning: Couldn't find specified server-side parameter set
+            logWarning(`Couldn't find server-side result parameter set: ${clientSideFilter.ServerSideResultParameterSet}`);
+          }
+          else {
+            const clientSideParameterSet = parameterSetDetails.filter(x => x.OperationId === clientSideFilter.ClientSideParameterSet)[0];
+            if (!clientSideParameterSet) {
+              logWarning(`Couldn't find client-side parameter set: ${clientSideFilter.ClientSideParameterSet}`);
+            }
+            else {
+              let valid = true;
+              for (const parametersDetail of serverSideParameterSet.ParameterDetails) {
+                for (const parameterDetailEntry of parametersDetail) {
+                  if (parameterDetailEntry.Mandatory === '$true' &&
+                    (!('ReadOnlyGlobalParameter' in parameterDetailEntry) || parameterDetailEntry.ReadOnlyGlobalParameter) &&
+                    (!('ConstantValue' in parameterDetailEntry) || parameterDetailEntry.ConstantValue)) {
+                    let clientSideParameter = null;
+                    for (const pd of clientSideParameterSet.ParameterDetails) {
+                      for (const entry of pd) {
+                        if ((entry.Mandatory === '$true') && (entry.Name === parameterDetailEntry.Name)) {
+                          clientSideParameter = entry;
+                        }
+                      }
+                    }
+                    if (!clientSideParameterSet) {
+                      // Warning: Missing client-side parameter
+                      logWarning(`Required server-side parameter '${parameterDetailEntry.Name}' is not required by the client-side, which will cause issues in client-side filtering. Can't include client-side filtering.`);
+                    }
+                    else {
+                      matchingParameters.push(parameterDetailEntry.Name);
+                    }
+                  }
+                }
+              }
+
+              if (valid) {
+                filterBlock = filterBlockStr(commandName, clientSideFilter, matchingParameters);
+              }
+            }
+          }
+        }
+        // If this is filled out, means that all the inputs were validated (except maybe the filter details)
+        if (filterBlock) {
+          for (const filter of clientSideFilter.Filters) {
+            if (filter.appendParameterInfo) {
+              const parameterDetails = {
+                'Name': getPascalCasedString(filter.Parameter),
+                'Mandatory': '$false',
+                'Type': filter.AppendParameterInfo.Type,
+                'ValidateSet': '',
+                'Description': 'Filter parameter',
+                'IsParameter': true
+              };
+              addUniqueParameter(parameterDetails, parameterDetails, clientSideFilter.ClientSideParameterSet, parametersToAdd, parameterHitCount); // TODO
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let x_ms_pageableObject = null;
+  for (const parameterSetDetail of parameterSetDetails) {
+    if (parameterSetDetail['x-ms-pageable'] && !isNextPageOperation) {
+      if (x_ms_pageableObject &&
+        x_ms_pageableObject.ReturnType &&
+        x_ms_pageableObject.ReturnType !== 'NONE' &&
+        x_ms_pageableObject.ReturnType !== parameterSetDetail.ReturnType) {
+        logWarning(`Multiple page return types found, unable to generate -Page parameter with a strong type for cmdlet '${commandName}'.`)
+        x_ms_pageableObject.ReturnType = 'NONE';
+      }
+      else if (!x_ms_pageableObject) {
+        x_ms_pageableObject = parameterSetDetail['x-ms-pageable'];
+        x_ms_pageableObject['ReturnType'] = parameterSetDetail.ReturnType;
+        if ("PSCmdletOutputItemType" in parameterSetDetail) {
+          x_ms_pageableObject['PSCmdletOutputItemType'] = parameterSetDetail.PSCmdletOutputItemType;
+        }
+        if ('operationName' in x_ms_pageableObject) {
+          // Search for the cmdlet with a parameter set with the given operationName
+          const pagingFunctionDetails = pathFunctionDetails.filter(x => x.ParameterSetDetails.OperationId === x_ms_pageableObject.operationName)[0];
+          if (!pagingFunctionDetails) {
+            throw `Failed to find specified next page operation with operationId '${x_ms_pageableObject.OperationName}' for cmdlet '${commandName}'.`;
+          }
+
+          const pagingParameterSet = pagingFunctionDetails.Value.ParameterSetDetails.filter(x => x.OperationId === x_ms_pageableObject.operationName);
+          const unmatchedParameters = [];
+          // This list of parameters works for when -Page is called...
+          let cmdletArgsPageParameterSet = ''
+          // ...and this list of parameters works for when unrolling paged results (when -Paging is not used)
+          let cmdletArgsNoPaging = ''
+          for (const pagingParameter of pagingParameterSet.ParameterDetails) {
+            // Ignore parameters that are readonly or have a constant value
+            if (pagingParameter.ReadOnlyGlobalParameter) {
+              continue;
+            }
+
+            if (pagingParameter.ConstantValue) {
+              continue;
+            }
+
+            const matchingCurrentParameter = Object.values(parameterSetDetail.ParameterDetails).filter(x => x.Name === pagingParameter.Name)[0];
+            if (matchingCurrentParameter) {
+              cmdletArgsPageParameterSet += "-$($pagingParameter.Name) `$$($pagingParameter.Name) ";
+              cmdletArgsNoPaging += "-$($pagingParameter.Name) `$$($pagingParameter.Name) ";
+            }
+            else {
+              unmatchedParameters.push(pagingParameter);
+              cmdletArgsPageParameterSet += "-$($pagingParameter.Name) `$Page.NextPageLink ";
+              cmdletArgsNoPaging += "-$($pagingParameter.Name) `$result.NextPageLink ";
+            }
+          }
+
+          if (unmatchedParameters.length !== 1) {
+            throw `PSSwagger requires that the NextLink operation contains exactly one parameter different than the original operation, where the different parameter is used to pass the nextLink value to the NextLink operation. Current cmdlet: '${commandName}'. NextLink operation: '${pagingFunctionDetails.Value.CommandName}'`;
+          }
+
+          x_ms_pageableObject['Cmdlet'] = pagingFunctionDetails.Value.CommandName;
+          x_ms_pageableObject['CmdletArgsPage'] = cmdletArgsPageParameterSet.trim();
+          x_ms_pageableObject['CmdletArgsPaging'] = cmdletArgsNoPaging.trim();
+        }
+        else {
+          x_ms_pageableObject['Operations'] = parameterSetDetail.Operations;
+          x_ms_pageableObject['MethodName'] = "$($parameterSetDetail.MethodName.Substring(0, $parameterSetDetail.MethodName.IndexOf('WithHttpMessagesAsync')))NextWithHttpMessagesAsync";
+        }
+      }
+    }
+
+    for (const parameterDetails of Object.values(parameterSetDetail.ParameterDetails)) {
+      let parameterRequiresAdding = true;
+      if ('client' === parameterDetails.x_ms_parameter_location) {
+        // Check if a global has been added already
+        if ("$($parameterDetails.Name)Global" in parametersToAdd) {
+          parameterRequiresAdding = false;
+        }
+        else if (parameterDetails.ReadOnlyGlobalParameter) {
+          parameterRequiresAdding = false;
+        }
+        else {
+          const globalParameterName = parameterDetails.Name;
+          if (parameterDetails.ConstantValue) {
+            // A parameter with a constant value doesn't need to be in the parameter block
+            parameterRequiresAdding = false;
+          }
+          globalParameters += globalParameterName;
+        }
+      }
+
+      if (parameterRequiresAdding) {
+        if ('x_ms_parameter_grouping_group' in parameterDetails) {
+          for (const parameterDetailEntry of parameterDetails.x_ms_parameter_grouping_group) {
+            addUniqueParameter(parameterDetails, parameterDetailEntry, parameterSetDetail.ParameterSetName, parametersToAdd, parameterHitCount);
+          }
+        }
+        else if (parameterDetails.FlattenOnPSCmdlet) {
+          const DefinitionName = parameterDetails.Type.Split('[.]').reverse()[0];
+          if (DefinitionName in definitionFunctionsDetails) {
+            const DefinitionDetails = definitionFunctionsDetails[DefinitionName];
+            flattenedParametersOnPSCmdlet[parameterDetails.Name] = DefinitionDetails;
+            for (const x of DefinitionDetails.ParametersTable) {
+              addUniqueParameter(parameterDetails, x, parameterSetDetail.ParameterSetName, parametersToAdd, parameterHitCount);
+            }
+          }
+          else {
+            throw `Flatten property is specified as 'true' for an invalid parameter '${parameterDetails.Name}' with type '${parameterDetails.Type}'.`;
+          }
+        }
+        else {
+          addUniqueParameter(parameterDetails, parameterDetails, parameterSetDetail.ParameterSetName, parametersToAdd, parameterHitCount);
+        }
+      }
+      else {
+        // This magic string is here to distinguish local vs global parameters with the same name, e.g. in the Azure Resources API
+        parametersToAdd[`${parameterDetails.Name}Global`] = null;
+      }
+    }
+  }
+
+  let topParameterToAdd = null;
+  let skipParameterToAdd = null;
+  let pagingBlock = '';
+  let pagingOperationName = '';
+  let nextLinkName = 'NextLink';
+  let pagingOperations = '';
+  let cmdlet = '';
+  let cmdletArgs = '';
+  let pageType = 'Array';
+  let psCmdletOutputItemType = '';
+
+  if (x_ms_pageableObject) {
+    if (x_ms_pageableObject.ReturnType !== 'NONE') {
+      pageType = x_ms_pageableObject.ReturnType;
+      if (x_ms_pageableObject.psCmdletOutputItemType) {
+        psCmdletOutputItemType = x_ms_pageableObject.psCmdletOutputItemType;
+      }
+    }
+
+    if (x_ms_pageableObject.Operations) {
+      pagingOperations = x_ms_pageableObject.Operations;
+      pagingOperationName = x_ms_pageableObject.MethodName;
+    }
+    else {
+      cmdlet = x_ms_pageableObject.Cmdlet;
+      cmdletArgs = x_ms_pageableObject.CmdletArgsPaging;
+    }
+
+    if (x_ms_pageableObject.NextLinkName) {
+      nextLinkName = x_ms_pageableObject.NextLinkName;
+    }
+
+    topParameterToAdd = {
+      Details: {
+        Name: 'Top',
+        Type: 'int',
+        Mandatory: '$false',
+        Description: 'Return the top N items as specified by the parameter value. Applies after the -Skip parameter.',
+        IsParameter: true,
+        ValidateSet: null,
+        ExtendedData: {
+          Type: 'int',
+          HasDefaultValue: true,
+          DefaultValue: -1
+        }
+      },
+      ParameterSetInfo: {}
+    };
+
+    skipParameterToAdd = {
+      Details: {
+        Name: 'Skip',
+        Type: 'int',
+        Mandatory: '$false',
+        Description: 'Skip the first N items as specified by the parameter value.',
+        IsParameter: true,
+        ValidateSet: null,
+        ExtendedData: {
+          Type: 'int',
+          HasDefaultValue: true,
+          DefaultValue: -1
+        }
+      },
+      ParameterSetInfo: {}
+    };
+  }
+
+
+  let authenticationCommand: string = "";
+  let authenticationCommandArgumentName: string = "";
+
+  // Process security section
+  let hostOverrideCommand: string = "";
+  // CustomAuthCommand and HostOverrideCommand are not required for Arm Services
+  if (psCodeGen['ServiceType'] !== 'azure_stack' && psCodeGen['ServiceType'] ===/*TODO: bug?*/ 'azure_stack') {
+    if (psCodeGen.CustomAuthCommand) {
+      authenticationCommand = psCodeGen.CustomAuthCommand;
+    }
+    if (psCodeGen.HostOverrideCommand) {
+      hostOverrideCommand = psCodeGen.HostOverrideCommand;
+    }
+  }
+
+  let securityParametersToAdd: any[] = [];
+  let addHttpClientHandler = false;
+
+  // If the auth function hasn't been set by metadata, try to discover it from the security and securityDefinition objects in the spec
+  if (!authenticationCommand && !useAzureCsharpGenerator) {
+    if (swaggerDictSecurity) {
+      // For now, just take the first security object
+      if (swaggerDictSecurity.length > 1) {
+        logWarning(`Multiple security requirements are currently unsupported. Only the first security requirement is being considered for command '${commandName}'.`)
+      }
+      const firstSecurityObject = swaggerDictSecurity[0];
+      // If there's no security object, we don't care about the security definition object
+      if (firstSecurityObject) {
+        // If there is one, we need to know the definition
+        if (!swaggerDictSecurityDefinitions) {
+          throw "Security object was specified in the Swagger specification, but the Security Definition object was not.";
+        }
+
+        const securityDefinition = swaggerDictSecurityDefinitions[firstSecurityObject.Name];
+        if (!securityDefinition) {
+          throw `Security definition with name '${firstSecurityObject.Name}' is missing.`;
+        }
+
+        if (!securityDefinition.type) {
+          throw `API key security definition '${firstSecurityObject.Name}' is missing the 'type' property.`;
+        }
+
+        const type = securityDefinition.type;
+        if (type === 'basic') {
+          // For Basic Authentication, allow the user to pass in a PSCredential object.
+          const credentialParameter = {
+            Details: {
+              Name: 'Credential',
+              Type: 'PSCredential',
+              Mandatory: '$true',
+              Description: 'User credentials.',
+              IsParameter: true,
+              ValidateSet: null,
+              ExtendedData: {
+                Type: 'PSCredential',
+                HasDefaultValue: false
+              }
+            },
+            ParameterSetInfo: {}
+          };
+          securityParametersToAdd.push({
+            Parameter: credentialParameter,
+            IsConflictingWithOperationParameter: false
+          });
+          // If the service is specified to not issue authentication challenges, we can't rely on HttpClientHandler
+          if (psCodeGen.NoAuthChallenge) {
+            authenticationCommand = 'param([pscredential]$Credential) Get-AutoRestCredential -Credential $Credential';
+            authenticationCommandArgumentName = 'Credential';
+          }
+          else {
+            // Use an empty service client credentials object because we're using HttpClientHandler instead
+            authenticationCommand = 'Get-AutoRestCredential';
+            addHttpClientHandler = true;
+          }
+        }
+        else if (type === 'apiKey') {
+          if (!securityDefinition.name) {
+            throw `API key security definition '${firstSecurityObject.Name}' is missing the 'name' property.`;
+          }
+
+          if (!securityDefinition.in) {
+            throw `API key security definition '${firstSecurityObject.Name}' is missing the 'in' property.`;
+          }
+
+          // For API key authentication, the user should supply the API key, but the in location and the name are generated from the spec
+          // In addition, we'd be unable to authenticate without the API key, so make it mandatory
+          const credentialParameter = {
+            Details: {
+              Name: 'APIKey',
+              Type: 'string',
+              Mandatory: '$true',
+              Description: 'API key given by service owner.',
+              IsParameter: true,
+              ValidateSet: null,
+              ExtendedData: {
+                Type: 'string',
+                HasDefaultValue: false
+              }
+            },
+            ParameterSetInfo: {}
+          };
+          securityParametersToAdd.push({
+            Parameter: credentialParameter,
+            IsConflictingWithOperationParameter: false
+          });
+          authenticationCommand = `param([string]$APIKey) Get-AutoRestCredential -APIKey $APIKey -Location '${securityDefinition.in}' -Name '${securityDefinition.name}'`;
+          authenticationCommandArgumentName = 'APIKey';
+        }
+        else {
+          logWarning(`Authentication type '${type}' is not supported by PSSwagger. The generated module will default to no authentication unless overridden.`)
+        }
+      }
+    }
+  }
+
+  if (!authenticationCommand && !useAzureCsharpGenerator) {
+    // At this point, there was no supported security object or overridden auth function, so assume no auth
+    authenticationCommand = 'Get-AutoRestCredential';
+  }
+
+  const nonUniqueParameterSets: any[] = [];
+  for (const parameterSetDetail of parameterSetDetails) {
+    // Add parameter sets to paging parameter sets
+    if (topParameterToAdd && parameterSetDetail['x-ms-pageable'] && !isNextPageOperation) {
+      topParameterToAdd.ParameterSetInfo[parameterSetDetail.ParameterSetName] = {
+        Name: parameterSetDetail.ParameterSetName,
+        Mandatory: '$false'
+      };
+    }
+
+    if (skipParameterToAdd && parameterSetDetail['x-ms-pageable'] && !isNextPageOperation) {
+      skipParameterToAdd.ParameterSetInfo[parameterSetDetail.ParameterSetName] = {
+        Name: parameterSetDetail.ParameterSetName,
+        Mandatory: '$false'
+      };
+    }
+
+    const parameterConflictAndResult = (x0: string, x1: string, x2: string, x3: string) => `Parameter '${x0}' from cmdlet '${x1}' and parameter set '${x2}' conflicts with an autogenerated parameter. ${x3}`;
+
+    // Test for uniqueness of parameters
+    for (const parameterDetails of Object.values(parameterSetDetail.ParameterDetails)) {
+      // Check if the paging parameters are conflicting
+      // Note that this has to be moved elsewhere to be more generic, but this is temporarily located here to solve this scenario for paging at least
+      if (topParameterToAdd && parameterDetails.Name === 'Top') {
+        topParameterToAdd = null;
+        // If the parameter is not OData, full paging support isn't possible.
+        if (!parameterDetails.ExtendedData.IsODataParameter) {
+          logWarning(parameterConflictAndResult('Top', commandName, parameterSetDetail.OperationId, "As a result, full paging capabilities will not be supported."))
+        }
+      }
+
+      if (skipParameterToAdd && parameterDetails.Name === 'Skip') {
+        skipParameterToAdd = null;
+        // If the parameter is not OData, full paging support isn't possible.
+        if (!parameterDetails.ExtendedData.IsODataParameter) {
+          logWarning(parameterConflictAndResult('Skip', commandName, parameterSetDetail.OperationId, "As a result, full paging capabilities will not be supported."))
+        }
+      }
+
+      for (const additionalParameter of securityParametersToAdd) {
+        if (parameterDetails.Name === additionalParameter.Parameter.Details.Name) {
+          additionalParameter.IsConflictingWithOperationParameter = true;
+          logWarning(parameterConflictAndResult(additionalParameter.Parameter.Details.Name, commandName, parameterSetDetail.ParameterSetName, "As a result, the -Credential parameter of type PSCredential will not added, and the specification-specified parameter will be used instead."))
+        }
+      }
+
+      if (parameterHitCount[parameterDetails.Name] === 1) {
+        // continue here brings us back to the top of the $parameterSetDetail.ParameterDetails.GetEnumerator() | ForEach-Object loop
+        continue;
+      }
+    }
+
+    // At this point none of the parameters in this set are unique
+    nonUniqueParameterSets.push(parameterSetDetail);
+  }
+
+  if (topParameterToAdd) {
+    parametersToAdd[topParameterToAdd.Details.Name] = topParameterToAdd;
+  }
+
+  if (skipParameterToAdd) {
+    parametersToAdd[skipParameterToAdd.Details.Name] = skipParameterToAdd;
+  }
+
+  for (const additionalParameter of securityParametersToAdd) {
+    if (!additionalParameter.IsConflictingWithOperationParameter) {
+      parametersToAdd[additionalParameter.Parameter.Details.Name] = additionalParameter.Parameter;
+    }
+  }
+
 
   let pagingOperationCall: string | null = null;
   if (pagingOperations) {
@@ -947,15 +1503,34 @@ function doParameterStuff(
     ? pathFunctionBodyAsJob(pagingBlock, topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr)
     : pathFunctionBodySynch(pagingBlock, topPagingObjectStr, skipPagingObjectStr, pageResultPagingObjectStr, pageTypePagingObjectStr);
 
+  const pathGenerationPhaseResult = getPathFunctionBody(
+    parameterSetDetails,
+    oDataExpressionBlock,
+    parameterGroupsExpressionBlock,
+    globalParameters,
+    swaggerDictInfo,
+    swaggerDictDefinitions,
+    useAzureCsharpGenerator,
+    addHttpClientHandler,
+    hostOverrideCommand,
+    authenticationCommand,
+    authenticationCommand && authenticationCommandArgumentName,
+    flattenedParametersOnPSCmdlet,
+    parameterAliasMapping,
+    globalParametersStatic,
+    filterBlock
+  );
+
+  const bodyObject = pathGenerationPhaseResult.BodyObject;
+
   return {
     paramHelp,
-    parameterGroupsExpressionBlock,
-    oDataExpressionBlock,
-    parameterAliasMapping,
     defaultParameterSetName,
     commandHelp,
     paramBlockReplaceStr,
-    pathFunctionBody
+    pathFunctionBody,
+    bodyObject,
+    psCmdletOutputItemType
   };
 }
 
@@ -1011,26 +1586,27 @@ const helpDescStr = (synopsis: string, description: string) => `
 `;
 
 const pathFunctionBodyHelper = (topPagingObjectStr: string, skipPagingObjectStr: string, pageResultPagingObjectStr: string, pageTypePagingObjectStr: string): string => {
+  let result = "";
   if (topPagingObjectStr) {
-    return `
+    result += `
             $TopInfo = ${topPagingObjectStr}
             $GetTaskResult_params['TopInfo'] = $TopInfo`;
   }
   if (skipPagingObjectStr) {
-    return `
+    result += `
             $SkipInfo = ${skipPagingObjectStr}
             $GetTaskResult_params['SkipInfo'] = $SkipInfo`;
   }
   if (pageResultPagingObjectStr) {
-    return `
+    result += `
             $PageResult = ${pageResultPagingObjectStr}
             $GetTaskResult_params['PageResult'] = $PageResult`;
   }
   if (pageTypePagingObjectStr) {
-    return `
+    result += `
             $GetTaskResult_params['PageType'] = ${pageTypePagingObjectStr}`;
   }
-  return "";
+  return result;
 };
 
 const pathFunctionBodyAsJob = (pagingBlock: string, topPagingObjectStr: string, skipPagingObjectStr: string, pageResultPagingObjectStr: string, pageTypePagingObjectStr: string) => `
@@ -1239,4 +1815,43 @@ switch ($responseStatusCode)
                     
                     Default {Write-Error -Message "Status: $responseStatusCode received."}
                 }
+`;
+
+
+
+const methodBlockFunctionCall = (clientName: string, operations: string, methodName: string, paramList: string) => `
+        Write-Verbose -Message 'Performing operation ${methodName} on ${clientName}.'
+        $TaskResult = ${clientName}${operations}.${methodName}(${paramList})
+`;
+
+const methodBlockCmdletCall = (cmdlet: string, cmdletArgs: string) => `
+        Write-Verbose -Message 'Calling cmdlet ${cmdlet}.'
+        ${cmdlet} ${cmdletArgs}
+        $TaskResult = $null
+`;
+
+
+
+const parameterSetBasedMethodStrIfCase = (parameterSetConditionsStr: string, additionalConditionStart: string, methodBlock: string, additionalConditionEnd: string) => `
+if (${parameterSetConditionsStr}) {
+${additionalConditionStart}${methodBlock}${additionalConditionEnd}
+    }
+`;
+
+const parameterSetBasedMethodStrElseIfCase = (parameterSetConditionsStr: string, additionalConditionStart: string, methodBlock: string, additionalConditionEnd: string) => `
+ elseif (${parameterSetConditionsStr}) {
+${additionalConditionStart}${methodBlock}${additionalConditionEnd}
+    }
+`;
+
+
+const constructFlattenedParameter = (flattenedParametersListStr: string, flattenedParamType: string, swaggerOperationParameterName: string) => `
+    $flattenedParameters = ${flattenedParametersListStr}
+    $utilityCmdParams = @{}
+    $flattenedParameters | ForEach-Object {
+        if($PSBoundParameters.ContainsKey($_)) {
+            $utilityCmdParams[$_] = $PSBoundParameters[$_]
+        }
+    }
+    $${swaggerOperationParameterName} = New-${flattenedParamType}Object @utilityCmdParams
 `;
