@@ -801,7 +801,6 @@ function getValueText(obj: any) {
 }
 
 function newSwaggerSpecPathCommand(
-  clientName: string,
   swaggerDictSecurity: any,
   swaggerDictSecurityDefinitions: any,
   swaggerDictInfo: any,
@@ -813,6 +812,7 @@ function newSwaggerSpecPathCommand(
   pathFunctionDetails: any,
   outputDirectory: string,
   psHeaderComment: string) {
+  const clientName: string = "$" + swaggerDictInfo.ClientTypeName;
 
   // preprocess paging operations
   for (const f of Object.values(pathFunctionDetails)) {

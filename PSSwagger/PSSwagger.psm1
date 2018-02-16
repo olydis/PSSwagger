@@ -9,6 +9,29 @@
 #########################################################################################
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
+function ConvertTo-HashtableFromPsCustomObject { 
+    param ( 
+        [Parameter(  
+            Position = 0,   
+            Mandatory = $true,   
+            ValueFromPipeline = $true,  
+            ValueFromPipelineByPropertyName = $true  
+        )] [object[]]$psCustomObject 
+    ); 
+    
+    process { 
+        foreach ($myPsObject in $psCustomObject) {
+            $output = @{}; 
+           #  Write-Warning "VAL: $($myPsObject | ConvertTo-Json)"
+            $myPsObject | Get-Member -MemberType *Property | % { 
+               # Write-Warning "PROP: $($_ | ConvertTo-Json)"
+                $output.($_.name) = $myPsObject.($_.name); 
+            } 
+            $output; 
+        } 
+    } 
+}
+
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 Import-Module "$PSScriptRoot\Eval-Ts.ps1" -Force
 
@@ -756,7 +779,7 @@ function New-PSSwaggerModule {
 
     $FunctionsToExport = @()
     Write-Warning "$($SwaggerDict | ConvertTo-Json)"
-    $FunctionsToExport += Eval-Ts $tsSwaggerUtils "newSwaggerSpecPathCommand" ('$' + $SwaggerDict['Info']['ClientTypeName']), $swaggerDict["Security"], $swaggerDict["SecurityDefinitions"], $swaggerDict["Info"], (ConvertTo-PsCustomObjectFromHashtable $swaggerDict["Definitions"]), $swaggerDict["CommandDefaults"], $SwaggerMetaDict['UseAzureCsharpGenerator'].IsPresent, $SwaggerMetaDict['PowerShellCodeGen'], $DefinitionFunctionsDetails, $PathFunctionDetails, $SwaggerMetaDict['outputDirectory'], $PSHeaderComment
+    $FunctionsToExport += Eval-Ts $tsSwaggerUtils "newSwaggerSpecPathCommand" $swaggerDict.Security, $swaggerDict.SecurityDefinitions, $swaggerDict.Info, $swaggerDict.Definitions, $swaggerDict.CommandDefaults, $SwaggerMetaDict['UseAzureCsharpGenerator'].IsPresent, $SwaggerMetaDict['PowerShellCodeGen'], $DefinitionFunctionsDetails, $PathFunctionDetails, $SwaggerMetaDict['outputDirectory'], $PSHeaderComment
 
     $FunctionsToExport += New-SwaggerDefinitionCommand -DefinitionFunctionsDetails $DefinitionFunctionsDetails `
         -SwaggerMetaDict $swaggerMetaDict `
@@ -791,7 +814,7 @@ function New-PSSwaggerModule {
 
     New-ModuleManifestUtility -Path $outputDirectory `
         -FunctionsToExport $FunctionsToExport `
-        -Info $swaggerDict['info'] `
+        -Info (ConvertTo-HashtableFromPsCustomObject $swaggerDict['info']) `
         -PSHeaderComment $PSHeaderComment
 
     $CopyFilesMap = [ordered]@{
@@ -953,7 +976,7 @@ function ConvertTo-CsharpCode {
     )
 
     Write-Verbose -Message $LocalizedData.GenerateCodeUsingAutoRest
-    $info = $SwaggerDict['Info']    
+    $info = ConvertTo-HashtableFromPsCustomObject $SwaggerDict['Info']    
 
     $AutoRestCommand = Get-Command -Name AutoRest -ErrorAction Ignore | Select-Object -First 1 -ErrorAction Ignore
     if (-not $AutoRestCommand) {

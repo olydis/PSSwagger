@@ -552,7 +552,7 @@ function getSwaggerInfo(info: any, moduleName: string, moduleVersion: string, cl
   moduleName = moduleName || infoName;
 
   // Default namespace supports sxs
-  const NamespaceVersionSuffix = "v" + moduleVersion.replace(/\./g, '');
+  const NamespaceVersionSuffix = "v" + moduleVersion.replace(/[.]/g, '');
   let NameSpace = `${psSwaggerDefaultNamespace}.${moduleName}.${NamespaceVersionSuffix}`;
 
   if (clientTypeName) {
@@ -617,16 +617,12 @@ function convertToSwaggerDictionary(
     throw "Invalid Swagger specification file. Info section doesn't exists.";
   }
 
-  if (psCodeGen && ('securityDefinitions' in swaggerDocObject)) {
-    swaggerDict['SecurityDefinitions'] = swaggerDocObject.securityDefinitions;
-    if ('azure_auth' in swaggerDocObject) {
-      psCodeGen['ServiceType'] = 'azure';
-    }
+  swaggerDict['SecurityDefinitions'] = swaggerDocObject.securityDefinitions || null;
+  if (psCodeGen && 'securityDefinitions' in swaggerDocObject && 'azure_auth' in swaggerDocObject) {
+    psCodeGen['ServiceType'] = 'azure';
   }
 
-  if ('security' in swaggerDocObject) {
-    swaggerDict['Security'] = swaggerDocObject.security;
-  }
+  swaggerDict['Security'] = swaggerDocObject.security || null;
 
   swaggerDict['Info'] = getSwaggerInfo(swaggerDocObject.info, moduleName, moduleVersion, clientTypeName, modelsName);
   swaggerDict['Info']['DefaultCommandPrefix'] = defaultCommandPrefix;
@@ -634,10 +630,10 @@ function convertToSwaggerDictionary(
     swaggerDict['Info']['Header'] = header;
   }
 
+  swaggerDict['CommandDefaults'] = {};
   if (swaggerDocObject.info['x-ps-module-info'] && 'commandDefaults' in swaggerDocObject.info['x-ps-module-info']) {
     swaggerDict['CommandDefaults'] = Object.assign({}, swaggerDocObject.info['x-ps-module-info'].commandDefaults);
   } else if (psMetaJsonObject && psMetaJsonObject.info && psMetaJsonObject.info['x-ps-module-info'] && psMetaJsonObject.info['x-ps-module-info'].commandDefaults) {
-    swaggerDict['CommandDefaults'] = {};
     for (const property in psMetaJsonObject.info['x-ps-module-info'] && psMetaJsonObject.info['x-ps-module-info'].commandDefaults) {
       swaggerDict['CommandDefaults'][property] = psMetaJsonObject.info['x-ps-module-info'].commandDefaults[property];
     }

@@ -162,7 +162,7 @@ function ConvertTo-SwaggerDictionary {
     )
     
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-    $res = Eval-Ts $tsLoadSwagger "convertToSwaggerDictionary" $SwaggerSpecPath, $SwaggerSpecFilePaths, $DefinitionFunctionsDetails, $ModuleName, "$($ModuleVersion.Major)-$($ModuleVersion.Minor)-$($ModuleVersion.Build)", $ClientTypeName, $ModelsName, $DefaultCommandPrefix, $Header, $AzureSpec, $DisableVersionSuffix, $PowerShellCodeGen, $PSMetaJsonObject
+    $res = Eval-Ts $tsLoadSwagger "convertToSwaggerDictionary" $SwaggerSpecPath, $SwaggerSpecFilePaths, $DefinitionFunctionsDetails, $ModuleName, "$($ModuleVersion.Major).$($ModuleVersion.Minor).$($ModuleVersion.Build)", $ClientTypeName, $ModelsName, $DefaultCommandPrefix, $Header, $AzureSpec, $DisableVersionSuffix, $PowerShellCodeGen, $PSMetaJsonObject
     return ConvertTo-HashtableFromPsCustomObject $res
 }
 
@@ -495,7 +495,7 @@ function Test-OperationNameInDefinitionList
         $SwaggerDict
     )
 
-    return $SwaggerDict['Definitions'].ContainsKey($Name)
+    return (ConvertTo-HashtableFromPsCustomObject $SwaggerDict['Definitions']).ContainsKey($Name)
 }
 
 <#
