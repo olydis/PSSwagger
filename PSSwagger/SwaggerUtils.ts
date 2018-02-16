@@ -267,20 +267,6 @@ function ExistsVerb(verb: string) {
 
 // 
 
-function getPsTypeFromSwaggerObject(parameterType: string, jsonObject: any): string {
-  let parameterFormat: string = null;
-  if (jsonObject) {
-    if (jsonObject.type) parameterType = jsonObject.type;
-    if (jsonObject.format) parameterFormat = jsonObject.format;
-  }
-  switch (parameterType.toLowerCase()) {
-    case "boolean": return "switch";
-    case "integer": return parameterFormat || "int64";
-    case "number": return parameterFormat || "double";
-  }
-  return parameterType;
-}
-
 function getPathCommandName(operationId: string): any {
   const opIdValues = operationId.split("_", 2);
 
@@ -814,20 +800,62 @@ function getValueText(obj: any) {
   }
 }
 
-function doParameterStuff(
-  asJobParameterString: string,
+function newSwaggerSpecPathCommand(
   clientName: string,
   swaggerDictSecurity: any,
   swaggerDictSecurityDefinitions: any,
   swaggerDictInfo: any,
   swaggerDictDefinitions: any,
   swaggerDictCommandDefaults: any,
-  isNextPageOperation: boolean,
   useAzureCsharpGenerator: boolean,
   psCodeGen: any,
   definitionFunctionsDetails: any,
   pathFunctionDetails: any,
-  functionDetails: any): any {
+  outputDirectory: string,
+  psHeaderComment: string) {
+
+  // preprocess paging operations
+  for (const f of Object.values(pathFunctionDetails)) {
+    for (const parameterSetDetail of Object.values(f)) {
+      if (parameterSetDetail['x-ms-pageable'] && 'operationName' in parameterSetDetail['x-ms-pageable']) {
+        const matchingPath = pathFunctionDetails.filter(x => x.ParameterSetDetails.OperationId === parameterSetDetail['x-ms-pageable']['operationName'])[0];
+        matchingPath['IsNextPageOperation'] = true;
+      }
+    }
+  }
+
+  return Object.values(pathFunctionDetails).map(functionDetails => newSwaggerPath(
+    clientName,
+    swaggerDictSecurity,
+    swaggerDictSecurityDefinitions,
+    swaggerDictInfo,
+    swaggerDictDefinitions,
+    swaggerDictCommandDefaults,
+    useAzureCsharpGenerator,
+    psCodeGen,
+    definitionFunctionsDetails,
+    pathFunctionDetails,
+    functionDetails,
+    outputDirectory,
+    psHeaderComment));
+}
+
+function newSwaggerPath(
+  clientName: string,
+  swaggerDictSecurity: any,
+  swaggerDictSecurityDefinitions: any,
+  swaggerDictInfo: any,
+  swaggerDictDefinitions: any,
+  swaggerDictCommandDefaults: any,
+  useAzureCsharpGenerator: boolean,
+  psCodeGen: any,
+  definitionFunctionsDetails: any,
+  pathFunctionDetails: any,
+  functionDetails: any,
+  outputDirectory: string,
+  psHeaderComment: string): any {
+
+  const isNextPageOperation: boolean = !!functionDetails.IsNextPageOperation;
 
   const commandName = functionDetails.CommandName;
   const parameterSetDetails = functionDetails.ParameterSetDetails;
@@ -1523,19 +1551,46 @@ function doParameterStuff(
 
   const bodyObject = pathGenerationPhaseResult.BodyObject;
 
-  return {
-    paramHelp,
-    defaultParameterSetName,
-    commandHelp,
-    paramBlockReplaceStr,
-    pathFunctionBody,
-    bodyObject,
-    psCmdletOutputItemType
-  };
+  const outputTypeBlock = psCmdletOutputItemType
+    ? outputTypeStr(psCmdletOutputItemType)
+    : bodyObject.OutputTypeBlock;
+
+  const dependencyInitFunction = useAzureCsharpGenerator
+    ? "Initialize-PSSwaggerDependencies -Azure"
+    : "Initialize-PSSwaggerDependencies";
+
+  const commandString = advFnSignatureForPath(commandName, commandHelp, paramHelp, outputTypeBlock, paramBlockReplaceStr, dependencyInitFunction, bodyObject.Body, pathFunctionBody, defaultParameterSetName);
+  const commandFilePath = `${outputDirectory}/${gneratedCommandsName}/SwaggerPathCommands/${commandName}.ps1`;
+  CreateDirectoryFor(commandFilePath);
+
+  writeFileSync(commandFilePath, getFormattedFunctionContent(psHeaderComment + commandString));
+  logVerbose(`Generated path command '${commandName}'.`);
+
+  return commandName;
+}
+
+const { dirname } = require("path");
+const { mkdirSync, existsSync, writeFileSync } = require("fs");
+function CreateDirectoryFor(filePath: string): void {
+  var dir: string = dirname(filePath);
+  if (!existsSync(dir)) {
+    CreateDirectoryFor(dir);
+    try {
+      mkdirSync(dir);
+    } catch (e) {
+      // mkdir throws if directory already exists - which happens occasionally due to race conditions
+    }
+  }
+}
+
+function getFormattedFunctionContent(content: string) {
+  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 
 // TEMPLATE
+const gneratedCommandsName = 'Generated.PowerShell.Commands'
+
 const outputTypeStr = (fullPathDataType: string): string => `
         [OutputType([${fullPathDataType}])]
 `;
@@ -1854,4 +1909,11 @@ const constructFlattenedParameter = (flattenedParametersListStr: string, flatten
         }
     }
     $${swaggerOperationParameterName} = New-${flattenedParamType}Object @utilityCmdParams
+`;
+
+const asJobParameterString = `
+
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $AsJob
 `;

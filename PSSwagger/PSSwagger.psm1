@@ -9,6 +9,9 @@
 #########################################################################################
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 
+$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
+Import-Module "$PSScriptRoot\Eval-Ts.ps1" -Force
+
 $SubScripts = @(
     'PSSwagger.Constants.ps1'
 )
@@ -752,13 +755,8 @@ function New-PSSwaggerModule {
     }
 
     $FunctionsToExport = @()
-    $FunctionsToExport += New-SwaggerSpecPathCommand -PathFunctionDetails $PathFunctionDetails `
-        -SwaggerMetaDict $swaggerMetaDict `
-        -SwaggerDict $swaggerDict `
-        -DefinitionFunctionsDetails $DefinitionFunctionsDetails `
-        -PSHeaderComment $PSHeaderComment `
-        -Formatter $Formatter `
-        -PowerShellCodeGen $PowerShellCodeGen
+    Write-Warning "$($SwaggerDict | ConvertTo-Json)"
+    $FunctionsToExport += Eval-Ts $tsSwaggerUtils "newSwaggerSpecPathCommand" ('$' + $SwaggerDict['Info']['ClientTypeName']), $swaggerDict["Security"], $swaggerDict["SecurityDefinitions"], $swaggerDict["Info"], (ConvertTo-PsCustomObjectFromHashtable $swaggerDict["Definitions"]), $swaggerDict["CommandDefaults"], $SwaggerMetaDict['UseAzureCsharpGenerator'].IsPresent, $SwaggerMetaDict['PowerShellCodeGen'], $DefinitionFunctionsDetails, $PathFunctionDetails, $SwaggerMetaDict['outputDirectory'], $PSHeaderComment
 
     $FunctionsToExport += New-SwaggerDefinitionCommand -DefinitionFunctionsDetails $DefinitionFunctionsDetails `
         -SwaggerMetaDict $swaggerMetaDict `

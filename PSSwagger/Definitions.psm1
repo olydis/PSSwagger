@@ -10,6 +10,7 @@
 
 $tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 $tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
+$tsLoadSwagger = [System.IO.File]::ReadAllText("$PSScriptRoot\LoadSwagger.ts")
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
@@ -332,204 +333,32 @@ function Get-DefinitionParameterType
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
 
-    $DefinitionTypeNamePrefix = "$ModelsNamespace."
+    $res = Eval-Ts $tsLoadSwagger "getDefinitionParameterType" $ParameterJsonObject, $DefinitionName, $ParameterName, $DefinitionFunctionsDetails, $ModelsNamespace, $ParametersTable
 
-    $ParameterType = $null
-    $ValidateSet = $null
+    return ConvertTo-HashtableFromPsCustomObject $res
+}
 
-    if ((Get-Member -InputObject $ParameterJsonObject -Name 'Type') -and $ParameterJsonObject.Type)
-    {
-        $ParameterType = $ParameterJsonObject.Type
-
-        # When a definition property has single enum value, AutoRest doesn't generate an enum type.
-        if ((Get-Member -InputObject $ParameterJsonObject -Name 'Enum') -and 
-            $ParameterJsonObject.Enum -and ($ParameterJsonObject.Enum.Count -gt 1))
-        {
-            if ((Get-Member -InputObject $ParameterJsonObject -Name 'x-ms-enum') -and
-                $ParameterJsonObject.'x-ms-enum' -and
-                (-not (Get-Member -InputObject $ParameterJsonObject.'x-ms-enum' -Name 'modelAsString') -or
-                ($ParameterJsonObject.'x-ms-enum'.modelAsString -eq $false)))
-            {
-                $ParameterType = $DefinitionTypeNamePrefix + (Get-CSharpModelName -Name $ParameterJsonObject.'x-ms-enum'.Name)
-            }
-            else {
-                $ValidateSet = $ParameterJsonObject.Enum | ForEach-Object {$_ -replace "'", "''"}
-            }
-        }
-        # Use the format as parameter type if that is available as a type in PowerShell
-        elseif ((Get-Member -InputObject $ParameterJsonObject -Name 'Format') -and 
-                $ParameterJsonObject.Format -and 
-                ($null -ne ($ParameterJsonObject.Format -as [Type])) ) 
-        {
-            $ParameterType = $ParameterJsonObject.Format
-        }
-        elseif (($ParameterJsonObject.Type -eq 'array') -and
-                (Get-Member -InputObject $ParameterJsonObject -Name 'Items') -and 
-                $ParameterJsonObject.Items)
-        {
-            if((Get-Member -InputObject $ParameterJsonObject.Items -Name '$ref') -and 
-                $ParameterJsonObject.Items.'$ref')
-            {
-                $ReferenceTypeValue = $ParameterJsonObject.Items.'$ref'
-                $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeValue.Substring( $( $ReferenceTypeValue.LastIndexOf('/') ) + 1 )                
-                $ResolveReferenceParameterType_params = @{
-                    DefinitionFunctionsDetails = $DefinitionFunctionsDetails
-                    ReferenceTypeName          = $ReferenceTypeName
-                    DefinitionTypeNamePrefix   = $DefinitionTypeNamePrefix
-                }
-                $ResolvedResult = Resolve-ReferenceParameterType @ResolveReferenceParameterType_params
-                $ParameterType = $ResolvedResult.ParameterType + '[]'
-                if($ResolvedResult.ValidateSet) {
-                    $ValidateSet = $ResolvedResult.ValidateSet
-                }
-            }
-            elseif((Get-Member -InputObject $ParameterJsonObject.Items -Name 'Type') -and $ParameterJsonObject.Items.Type)
-            {
-                $ReferenceTypeName = Get-PSTypeFromSwaggerObject -JsonObject $ParameterJsonObject.Items
-                $ParameterType = "$($ReferenceTypeName)[]"
-            }
-        }
-        elseif ((Get-Member -InputObject $ParameterJsonObject -Name 'AdditionalProperties') -and 
-                $ParameterJsonObject.AdditionalProperties)
-        {
-            if($ParameterJsonObject.Type -eq 'object') {                
-                if((Get-Member -InputObject $ParameterJsonObject.AdditionalProperties -Name 'Type') -and
-                $ParameterJsonObject.AdditionalProperties.Type) {
-                    $AdditionalPropertiesType = Get-PSTypeFromSwaggerObject -JsonObject $ParameterJsonObject.AdditionalProperties
-                    # Dictionary
-                    $ParameterType = "System.Collections.Generic.Dictionary[[$AdditionalPropertiesType],[$AdditionalPropertiesType]]"
-                }
-                elseif((Get-Member -InputObject $ParameterJsonObject.AdditionalProperties -Name '$ref') -and
-                    $ParameterJsonObject.AdditionalProperties.'$ref')
-                {
-                    $ReferenceTypeValue = $ParameterJsonObject.AdditionalProperties.'$ref'
-                    $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeValue.Substring( $( $ReferenceTypeValue.LastIndexOf('/') ) + 1 )
-                    $ResolveReferenceParameterType_params = @{
-                        DefinitionFunctionsDetails = $DefinitionFunctionsDetails
-                        ReferenceTypeName          = $ReferenceTypeName
-                        DefinitionTypeNamePrefix   = $DefinitionTypeNamePrefix
-                    }
-                    $ResolvedResult = Resolve-ReferenceParameterType @ResolveReferenceParameterType_params
-                    # Dictionary
-                    $ParameterType = "System.Collections.Generic.Dictionary[[string],[$($ResolvedResult.ParameterType)]]"
-                }
-                else {
-                    $Message = $LocalizedData.UnsupportedSwaggerProperties -f ('ParameterJsonObject', $($ParameterJsonObject | Out-String))
-                    Write-Warning -Message $Message
-                }
-            }
-            elseif($ParameterJsonObject.Type -eq 'string') {
-                if((Get-Member -InputObject $ParameterJsonObject.AdditionalProperties -Name 'Type') -and
-                   ($ParameterJsonObject.AdditionalProperties.Type -eq 'array'))
-                {
-                    if(Get-Member -InputObject $ParameterJsonObject.AdditionalProperties -Name 'Items')
-                    {
-                        if((Get-Member -InputObject $ParameterJsonObject.AdditionalProperties.Items -Name 'Type') -and
-                           $ParameterJsonObject.AdditionalProperties.Items.Type)
-                        { 
-                            $ItemsType = Get-PSTypeFromSwaggerObject -JsonObject $ParameterJsonObject.AdditionalProperties.Items
-                            $ParameterType = "System.Collections.Generic.Dictionary[[string],[System.Collections.Generic.List[$ItemsType]]]"
-                        }
-                        elseif((Get-Member -InputObject $ParameterJsonObject.AdditionalProperties.Items -Name '$ref') -and
-                               $ParameterJsonObject.AdditionalProperties.Items.'$ref')
-                        {
-                            $ReferenceTypeValue = $ParameterJsonObject.AdditionalProperties.Items.'$ref'
-                            $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceTypeValue.Substring( $( $ReferenceTypeValue.LastIndexOf('/') ) + 1 )
-                            $ResolveReferenceParameterType_params = @{
-                                DefinitionFunctionsDetails = $DefinitionFunctionsDetails
-                                ReferenceTypeName          = $ReferenceTypeName
-                                DefinitionTypeNamePrefix   = $DefinitionTypeNamePrefix
-                            }
-                            $ResolvedResult = Resolve-ReferenceParameterType @ResolveReferenceParameterType_params
-                            $ParameterType = "System.Collections.Generic.Dictionary[[string],[System.Collections.Generic.List[$($ResolvedResult.ParameterType)]]]"
-                        }
-                        else
-                        {
-                            $Message = $LocalizedData.UnsupportedSwaggerProperties -f ('ParameterJsonObject', $($ParameterJsonObject | Out-String))
-                            Write-Warning -Message $Message
-                        }
-                    }
-                    else
-                    {
-                        $Message = $LocalizedData.UnsupportedSwaggerProperties -f ('ParameterJsonObject', $($ParameterJsonObject | Out-String))
-                        Write-Warning -Message $Message
-                    }
-                }
-                else
-                {
-                    $Message = $LocalizedData.UnsupportedSwaggerProperties -f ('ParameterJsonObject', $($ParameterJsonObject | Out-String))
-                    Write-Warning -Message $Message
-                }
-            }
-            else {
-                $Message = $LocalizedData.UnsupportedSwaggerProperties -f ('ParameterJsonObject', $($ParameterJsonObject | Out-String))
-                Write-Warning -Message $Message
-            }
-        }
-    }
-    elseif ($ParameterName -and ($ParameterName -eq 'Properties') -and
-            (Get-Member -InputObject $ParameterJsonObject -Name 'x-ms-client-flatten') -and 
-            ($ParameterJsonObject.'x-ms-client-flatten') )
-    {                         
-        # 'x-ms-client-flatten' extension allows to flatten deeply nested properties into the current definition.
-        # Users often provide feedback that they don't want to create multiple levels of properties to be able to use an operation. 
-        # By applying the x-ms-client-flatten extension, you move the inner properties to the top level of your definition.
-
-        $ReferenceParameterValue = $ParameterJsonObject.'$ref'
-        $ReferenceDefinitionName = Get-CSharpModelName -Name $ReferenceParameterValue.Substring( $( $ReferenceParameterValue.LastIndexOf('/') ) + 1 )
-
-        $x_ms_Client_flatten_DefinitionNames = @($ReferenceDefinitionName)
-
-        Set-TypeUsedAsClientFlatten -ReferenceTypeName $ReferenceDefinitionName -DefinitionFunctionsDetails $DefinitionFunctionsDetails
-
-        # Add/Update FunctionDetails to $DefinitionFunctionsDetails
-        $FunctionDetails = @{}
-        if($DefinitionFunctionsDetails.ContainsKey($DefinitionName))
-        {
-            $FunctionDetails = $DefinitionFunctionsDetails[$DefinitionName]
-            $FunctionDetails['x_ms_Client_flatten_DefinitionNames'] += $x_ms_Client_flatten_DefinitionNames
-        }
-        else
-        {
-            $FunctionDetails['Name'] = $DefinitionName
-            $FunctionDetails['x_ms_Client_flatten_DefinitionNames'] = $x_ms_Client_flatten_DefinitionNames
-        }
-
-        $DefinitionFunctionsDetails[$DefinitionName] = $FunctionDetails
-    }
-    elseif ( (Get-Member -InputObject $ParameterJsonObject -Name '$ref') -and ($ParameterJsonObject.'$ref') )
-    {
-        $ReferenceParameterValue = $ParameterJsonObject.'$ref'        
-        $ReferenceTypeName = Get-CSharpModelName -Name $ReferenceParameterValue.Substring( $( $ReferenceParameterValue.LastIndexOf('/') ) + 1 )
-        $ResolveReferenceParameterType_params = @{
-            DefinitionFunctionsDetails = $DefinitionFunctionsDetails
-            ReferenceTypeName          = $ReferenceTypeName
-            DefinitionTypeNamePrefix   = $DefinitionTypeNamePrefix
-        }
-        $ResolvedResult = Resolve-ReferenceParameterType @ResolveReferenceParameterType_params
-        $ParameterType = $ResolvedResult.ParameterType
-        if($ResolvedResult.ValidateSet) {
-            $ValidateSet = $ResolvedResult.ValidateSet
-        }
-    }
-    else
-    {
-        $ParameterType = 'object'
-    }
-
-    $ParameterType = Get-PSTypeFromSwaggerObject -ParameterType $ParameterType
-
-    if($ParameterType -and 
-       (-not $ParameterType.Contains($DefinitionTypeNamePrefix)) -and
-       ($null -eq ($ParameterType -as [Type])))
-    {
-        Write-Warning -Message ($LocalizedData.InvalidDefinitionParameterType -f $ParameterType, $ParameterName, $DefinitionName)
-    }
-
-    return @{
-        ParameterType = $ParameterType
-        ValidateSet   = $ValidateSet
-    }
+function ConvertTo-HashtableFromPsCustomObject { 
+     param ( 
+         [Parameter(  
+             Position = 0,   
+             Mandatory = $true,   
+             ValueFromPipeline = $true,  
+             ValueFromPipelineByPropertyName = $true  
+         )] [object[]]$psCustomObject 
+     ); 
+     
+     process { 
+         foreach ($myPsObject in $psCustomObject) {
+             $output = @{}; 
+            #  Write-Warning "VAL: $($myPsObject | ConvertTo-Json)"
+             $myPsObject | Get-Member -MemberType *Property | % { 
+                # Write-Warning "PROP: $($_ | ConvertTo-Json)"
+                 $output.($_.name) = $myPsObject.($_.name); 
+             } 
+             $output; 
+         } 
+     } 
 }
 
 function Expand-SwaggerDefinition

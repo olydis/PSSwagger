@@ -151,57 +151,6 @@ function Get-CallerPreference
     }
 }
 
-function Get-ParameterGroupName {
-    [CmdletBinding(DefaultParameterSetName="Name")]
-    param(
-        [Parameter(Mandatory=$true, ParameterSetName="Name")]
-        [string]
-        $RawName,
-
-        [Parameter(Mandatory=$true, ParameterSetName="Postfix")]
-        [string]
-        $OperationId,
-
-        [Parameter(Mandatory=$false, ParameterSetName="Postfix")]
-        [string]
-        $Postfix
-    )
-
-    if ($PSCmdlet.ParameterSetName -eq 'Name') {
-        # AutoRest only capitalizes the first letter and the first letter after a hyphen
-        $newName = ''
-        $capitalize = $true
-        foreach ($char in $RawName.ToCharArray()) {
-            if ('-' -eq $char) {
-                $capitalize = $true
-            } elseif ($capitalize) {
-                $capitalize = $false
-                if ((97 -le $char) -and (122 -ge $char)) {
-                    [char]$char = $char-32
-                }
-
-                $newName += $char
-            } else {
-                $newName += $char
-            }
-        }
-
-        return Remove-SpecialCharacter -Name $newName
-    } else {
-        if (-not $Postfix) {
-            $Postfix = "Parameters"
-        }
-
-        $split = $OperationId.Split('_')
-        if ($split.Count -eq 2) {
-            return "$($split[0])$($split[1])$Postfix"
-        } else {
-            # Don't ask
-            return "HyphenMinus$($OperationId)HyphenMinus$Postfix"
-        }
-    }
-}
-
 function Get-FormattedFunctionContent {
     [CmdletBinding()]
     param (
@@ -218,11 +167,5 @@ function Get-FormattedFunctionContent {
     $singleStringContent = $Content | Out-String
     $singleStringContent = $singleStringContent -replace "`r`n","`n"
     $singleStringContent = $singleStringContent -replace "`r","`n"
-    if ($Formatter -eq 'None') {
-        $singleStringContent
-    } elseif ($Formatter -eq 'PSScriptAnalyzer') {
-        PSScriptAnalyzer\Invoke-Formatter -ScriptDefinition $singleStringContent
-    } else {
-        $singleStringContent
-    }
+    return $singleStringContent
 }
