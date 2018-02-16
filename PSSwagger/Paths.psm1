@@ -641,6 +641,7 @@ function New-SwaggerPath {
         $dependencyInitFunction = "Initialize-PSSwaggerDependencies"
     }
     
+    $commandName = $FunctionDetails.CommandName
     $CommandString = (Eval-Ts $tsTemplates "advFnSignatureForPath" $commandName, $commandHelp, $paramHelp, $outputTypeBlock, $ParamBlockReplaceStr, $dependencyInitFunction, $body, $PathFunctionBody, $DefaultParameterSetName)
     $GeneratedCommandsPath = Join-Path -Path (Join-Path -Path $SwaggerMetaDict['outputDirectory'] -ChildPath $GeneratedCommandsName) `
         -ChildPath 'SwaggerPathCommands'
