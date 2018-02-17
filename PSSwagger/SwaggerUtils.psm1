@@ -94,12 +94,8 @@ Import-Module -Name 'PSSwaggerUtility'
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 $script:CmdVerbTrie = $null
 $script:CSharpCodeNamer = $null
-$script:CSharpCodeNamerLoadAttempted = $false
 
 $tsc = Get-Ts
-
-$script:IgnoredAutoRestParameters = @(@('Modeler', 'm'), @('AddCredentials'), @('CodeGenerator', 'g'))
-
 
 function ConvertTo-SwaggerDictionary {
     [CmdletBinding()]
@@ -289,46 +285,6 @@ function Get-CSharpModelName
     )
 
     return (Eval-Ts $tsc "getCSharpModelName" $Name)
-}
-
-<# Create an object from an external dependency with possible type name changes. Optionally resolve the external dependency using a delegate.
-Input to $AssemblyResolver is $AssemblyName.
-Doesn't support constructors with args currently. #>
-function New-ObjectFromDependency {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string[]]
-        $TypeNames,
-
-        [Parameter(Mandatory=$true)]
-        [string]
-        $AssemblyName,
-
-        [Parameter(Mandatory=$false)]
-        [System.Action[string]]
-        $AssemblyResolver
-    )
-
-    if ($TypeNames.Count -gt 0) {
-        $assemblyLoadAttempted = $false
-        foreach ($typeName in $TypeNames) {
-            if (-not ($typeName -as [Type])) {
-                if (-not $assemblyLoadAttempted) {
-                    if ($AssemblyResolver -ne $null) {
-                        $AssemblyResolver.Invoke($AssemblyName)
-                    } else {
-                        $null = Add-Type -Path $AssemblyName
-                    }
-
-                    $assemblyLoadAttempted = $true
-                }
-            } else {
-                return New-Object -TypeName $typeName
-            }
-        }
-    }
-
-    return $null
 }
 
 function Get-PowerShellCodeGenSettings {

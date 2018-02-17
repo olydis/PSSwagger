@@ -459,60 +459,6 @@ function Preprocess-PagingOperations {
     }
 }
 
-function Add-UniqueParameter {
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory = $true)]
-        [hashtable]
-        $ParameterDetails,
-        
-        [Parameter(Mandatory = $true)]
-        [hashtable]
-        $CandidateParameterDetails,
-
-        [Parameter(Mandatory = $true)]
-        [string]
-        $ParameterSetName,
-
-        [Parameter(Mandatory = $true)]
-        [hashtable]
-        $ParametersToAdd,
-
-        [Parameter(Mandatory = $true)]
-        [hashtable]
-        $ParameterHitCount
-    )
-
-    Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-
-    $parameterName = $CandidateParameterDetails.Name
-    if ($parameterDetails.IsParameter) {
-        if (-not $parameterHitCount.ContainsKey($parameterName)) {
-            $parameterHitCount[$parameterName] = 0
-        }
-
-        $parameterHitCount[$parameterName]++
-        if (-not ($parametersToAdd.ContainsKey($parameterName))) {
-            $parametersToAdd[$parameterName] = @{
-                # We can grab details like Type, Name, ValidateSet from any of the parameter definitions
-                Details          = $CandidateParameterDetails
-                ParameterSetInfo = @{$ParameterSetName = @{
-                        Name      = $ParameterSetName
-                        Mandatory = $CandidateParameterDetails.Mandatory
-                    }
-                }
-            }
-        }
-        else {
-            $parametersToAdd[$parameterName].ParameterSetInfo[$ParameterSetName] = @{
-                Name      = $ParameterSetName
-                Mandatory = $CandidateParameterDetails.Mandatory
-            }
-        }
-    }
-}
-
 function Set-ExtendedCodeMetadata {
     [CmdletBinding()]
     param
@@ -882,30 +828,4 @@ function Get-TemporaryCliXmlFilePath {
     $random = [Guid]::NewGuid().Guid
     $filePath = Join-Path -Path (Get-XDGDirectory -DirectoryType Cache) -ChildPath "$FullClientTypeName.$random.xml"
     return $filePath
-}
-<#
-.SYNOPSIS
- Convert an object into a string to represents the value in PowerShell
-
-.EXAMPLE
-[string]this is a string => 'this is a string'
-[bool]true => $true
-[int]5 => 5
-#>
-function Get-ValueText {
-    param(
-        [Parameter(Mandatory = $true)]
-        [object]
-        $obj
-    )
-
-    if ($obj -is [string]) {
-        return "'$obj'"
-    }
-    elseif ($obj -is [bool]) {
-        return "`$$obj"
-    }
-    else {
-        return $obj
-    }
 }

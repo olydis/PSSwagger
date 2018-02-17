@@ -47,52 +47,6 @@ function Get-HashtableKeyCount
     return $KeyCount
 }
 
-function Remove-SpecialCharacter
-{
-    param([string] $Name)
-
-    return (Eval-Ts $tsc "removeSpecialCharacter" $Name)
-}
-
-# Utility to throw an errorrecord
-function Write-TerminatingError
-{
-    param
-    (        
-        [parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [System.Management.Automation.PSCmdlet]
-        $CallerPSCmdlet,
-
-        [parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [System.String]        
-        $ExceptionName,
-
-        [parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [System.String]
-        $ExceptionMessage,
-        
-        [System.Object]
-        $ExceptionObject,
-        
-        [parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [System.String]
-        $ErrorId,
-
-        [parameter(Mandatory = $true)]
-        [ValidateNotNull()]
-        [System.Management.Automation.ErrorCategory]
-        $ErrorCategory
-    )
-        
-    $exception = New-Object $ExceptionName $ExceptionMessage;
-    $errorRecord = New-Object System.Management.Automation.ErrorRecord $exception, $ErrorId, $ErrorCategory, $ExceptionObject    
-    $CallerPSCmdlet.ThrowTerminatingError($errorRecord)
-}
-
 <#
 .DESCRIPTION
     This function is a helper function for any script module Advanced Function.
