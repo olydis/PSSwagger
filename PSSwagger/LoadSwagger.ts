@@ -211,7 +211,7 @@ function getParamType(
       paramType = DefinitionTypeNamePrefix + getCSharpModelName(parameterJsonObject['x-ms-enum'].name);
     }
     else {
-      const ValidateSet = parameterJsonObject.Enum.replace(x => x.replace(/'/g, "''"));
+      const ValidateSet = parameterJsonObject.Enum.map(x => x.replace(/'/g, "''"));
       ValidateSetString = `'${ValidateSet.join(', ')}'`;
     }
   }

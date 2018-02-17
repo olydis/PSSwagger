@@ -444,7 +444,12 @@ function getOutputType(schema: any, modelsNamespace: string, definitionList: any
   return { outputType, outputTypeBlock };
 }
 
-
+// Utility function to get the parameter names declared in the Azure Resource Id (Endpoint path).
+// Extraction logic follows the resource id guidelines provided by the Azure SDK team.
+// - ResourceId should have Get, optionally other operations like Patch, Put and Delete, etc.,
+// - Resource name parameter should be the last parameter in the endpoint path.
+// This function also extracts the output type of Get operation, which will be used as the type of InputObject parameter.
+// ResourceName return value will be used for generating alias value for Name parameter.
 function getAzureResourceIdParameters(
   jsonPathItemObject: any,
   resourceId: string,
