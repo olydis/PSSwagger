@@ -32,11 +32,6 @@ ConvertFrom-StringData @'
     ParameterSetNotAllowed=The '{0}' parameter is not allowed when '{1}' is specified.
     AssemblyCompilationResult=Result of assembly compilation: {0}
     PathNotFound=Cannot find the path '{0}' because it does not exist.
-    GeneratedPathCommand=Generated path command '{0}'.
-    GeneratedDefinitionCommand=Generated command '{0}' for the definition name '{1}'.
-    GeneratedFormatFile=Generated output format file for the definition name '{0}'.
-    FormatFileNotRequired=It is not required to generated the format file as this definition '{0}' doesn't have non-complex typed properties.
-    DeleteGeneratedFile=Deleting generated file '{0}'
     ExtractingMetadata=Extracting metadata from generated assembly
     ExpectedServiceClientTypeNotFound=Unable to find expected service client type: {0}
     ExpectedOperationsClientTypeNotFound=Unable to find expected operations client property '{0}' on type '{1}'
