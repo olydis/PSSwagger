@@ -85,27 +85,9 @@ function New-PSSwaggerMetadataFile {
     }
 
     $SwaggerSpecFilePaths = @()
-    $AutoRestModeler = 'Swagger'    
     $jsonObject = ConvertFrom-Json -InputObject ((Get-Content -Path $SpecificationPath) -join [Environment]::NewLine) -ErrorAction Stop
     $SwaggerBaseDir = Split-Path -Path $SpecificationPath -Parent
-    if ((Get-Member -InputObject $jsonObject -Name 'Documents') -and ($jsonObject.Documents.Count)) {
-        $AutoRestModeler = 'CompositeSwagger'
-        foreach ($document in $jsonObject.Documents) {
-            if (Test-Path -Path $document -PathType Leaf) {
-                $SwaggerSpecFilePaths += $document
-            }
-            elseif (Test-Path -Path (Join-Path -Path $SwaggerBaseDir -ChildPath $document) -PathType Leaf) {
-                $SwaggerSpecFilePaths += Join-Path -Path $SwaggerBaseDir -ChildPath $document
-            }
-            else {
-                throw $LocalizedData.PathNotFound -f ($document)
-                return
-            }
-        }
-    }
-    else {
-        $SwaggerSpecFilePaths += $SpecificationPath
-    }
+    $SwaggerSpecFilePaths += $SpecificationPath
 
     $DefinitionFunctionsDetails = @{}
     $ParameterGroupCache = @{}
@@ -125,7 +107,6 @@ function New-PSSwaggerMetadataFile {
     $swaggerMetaDict = @{
         SwaggerSpecPath      = $SpecificationPath
         SwaggerSpecFilePaths = $SwaggerSpecFilePaths
-        AutoRestModeler      = $AutoRestModeler
     }
 
     foreach ($FilePath in $SwaggerSpecFilePaths) {

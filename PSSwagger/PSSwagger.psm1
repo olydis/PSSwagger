@@ -324,7 +324,6 @@ function New-PSSwaggerModule {
     }
     
     $SwaggerSpecFilePaths = @()
-    $AutoRestModeler = 'Swagger'
     
     if (($PSCmdlet.ParameterSetName -eq 'SpecificationUri') -or 
         ($PSCmdlet.ParameterSetName -eq 'SdkAssemblyWithSpecificationUri')) {
@@ -364,34 +363,7 @@ function New-PSSwaggerModule {
         }
 
         $jsonObject = ConvertFrom-Json -InputObject ((Get-Content -Path $SpecificationPath) -join [Environment]::NewLine) -ErrorAction Stop
-        if ((Get-Member -InputObject $jsonObject -Name 'Documents') -and ($jsonObject.Documents.Count)) {
-            $AutoRestModeler = 'CompositeSwagger'
-            $BaseSwaggerUri = "$SpecificationUri".Substring(0, "$SpecificationUri".LastIndexOf('/'))
-            foreach ($document in $jsonObject.Documents) {
-                $FileName = Split-Path -Path $document -Leaf
-                $DocumentFolderPrefix = (Split-Path -Path $document -Parent).Replace('/', [System.IO.Path]::DirectorySeparatorChar).TrimStart('.')
-                
-                $DocumentFolderPath = Join-Path -Path $TempPath -ChildPath $DocumentFolderPrefix
-
-                if (-not (Test-Path -LiteralPath $DocumentFolderPath -PathType Container)) {
-                    $null = New-Item -Path $DocumentFolderPath -ItemType Container -Force -Confirm:$false -WhatIf:$false
-                }
-                $SwaggerDocumentPath = Join-Path -Path $DocumentFolderPath -ChildPath $FileName
-
-                $ev = $null
-                $webRequestParams['Uri'] = $($BaseSwaggerUri + $($document.replace('\', '/').TrimStart('.')))
-                $webRequestParams['OutFile'] = $SwaggerDocumentPath
-
-                Invoke-WebRequest @webRequestParams -ErrorVariable ev
-                if ($ev) {
-                    return 
-                }
-                $SwaggerSpecFilePaths += $SwaggerDocumentPath
-            }
-        }
-        else {
-            $SwaggerSpecFilePaths += $SpecificationPath
-        }
+        $SwaggerSpecFilePaths += $SpecificationPath
     }    
 
     $outputDirectory = Microsoft.PowerShell.Management\Resolve-Path -Path $Path | Select-Object -First 1 -ErrorAction Ignore
@@ -421,26 +393,7 @@ function New-PSSwaggerModule {
     if (($PSCmdlet.ParameterSetName -eq 'SpecificationPath') -or 
         ($PSCmdlet.ParameterSetName -eq 'SdkAssemblyWithSpecificationPath')) {
         $jsonObject = ConvertFrom-Json -InputObject ((Get-Content -Path $SpecificationPath) -join [Environment]::NewLine) -ErrorAction Stop
-        if ((Get-Member -InputObject $jsonObject -Name 'Documents') -and ($jsonObject.Documents.Count)) {
-            $AutoRestModeler = 'CompositeSwagger'
-            $SwaggerBaseDir = Split-Path -Path $SpecificationPath -Parent
-            foreach ($document in $jsonObject.Documents) {
-                $FileName = Split-Path -Path $document -Leaf
-                if (Test-Path -Path $document -PathType Leaf) {
-                    $SwaggerSpecFilePaths += $document
-                }
-                elseif (Test-Path -Path (Join-Path -Path $SwaggerBaseDir -ChildPath $document) -PathType Leaf) {
-                    $SwaggerSpecFilePaths += Join-Path -Path $SwaggerBaseDir -ChildPath $document
-                }
-                else {
-                    throw $LocalizedData.PathNotFound -f ($document)
-                    return
-                }
-            }
-        }
-        else {
-            $SwaggerSpecFilePaths += $SpecificationPath
-        }
+        $SwaggerSpecFilePaths += $SpecificationPath
     }
 
     if (($PSCmdlet.ParameterSetName -eq 'SpecificationPath') -or 
@@ -559,8 +512,8 @@ function New-PSSwaggerModule {
         }
     }
     
-    $nameSpace = $swaggerDict['info'].NameSpace
-    $models = $swaggerDict['info'].Models
+    $nameSpace = $swaggerDict['Info'].NameSpace
+    $models = $swaggerDict['Info'].Models
     if ($NoVersionFolder -or $PSVersionTable.PSVersion -lt '5.0.0') {
         if (-not $outputDirectory.EndsWith($Name, [System.StringComparison]::OrdinalIgnoreCase)) {
             $outputDirectory = Join-Path -Path $outputDirectory -ChildPath $Name
@@ -588,7 +541,6 @@ function New-PSSwaggerModule {
         UseAzureCsharpGenerator = $UseAzureCsharpGenerator
         SwaggerSpecPath         = $SpecificationPath
         SwaggerSpecFilePaths    = $SwaggerSpecFilePaths
-        AutoRestModeler         = $AutoRestModeler
         PowerShellCodeGen       = $PowerShellCodeGen
     }
 
@@ -1064,54 +1016,25 @@ function ConvertTo-CsharpCode {
     # Note: -ClientName doesn't seem to work for legacy invocation
     $ClientName = $info['ClientTypeName']
     try {
-        if ($info.ContainsKey('CodeGenFileRequired') -and $info.CodeGenFileRequired) {
-            # Some settings need to be overwritten
-            # Write the following parameters: AddCredentials, CodeGenerator, Modeler
-            $tempCodeGenSettings = @{
-                AddCredentials = $true
-                CodeGenerator  = $codeGenerator
-                Modeler        = $swaggerMetaDict['AutoRestModeler']
-                ClientName     = $ClientName
-            }
+        # See https://aka.ms/autorest/cli for AutoRest.cmd options.
+        $autoRestParams = @(
+            "--input-file=$($swaggerMetaDict['SwaggerSpecPath'])",
+            "--output-folder=$generatedCSharpPath",
+            "--namespace=$NameSpace",
+            '--add-credentials',
+            '--clear-output-folder=true',
+            "--override-client-name=$ClientName"
+            '--verbose',
+            '--csharp'
+        )
 
-            $tempCodeGenSettingsPath = "$(Join-Path -Path (Get-XDGDirectory -DirectoryType Cache) -ChildPath (Get-Random)).json"
-            $tempCodeGenSettings | ConvertTo-Json | Out-File -FilePath $tempCodeGenSettingsPath
-
-            $autoRestParams = @('-Input', $swaggerMetaDict['SwaggerSpecPath'], '-OutputDirectory', $generatedCSharpPath, '-Namespace', $NameSpace, '-CodeGenSettings', $tempCodeGenSettingsPath)
+        if ($codeGenerator -eq 'Azure.CSharp') {
+            $autoRestParams += '--azure-arm'
         }
-        elseif ( ($AutoRestCommand.Name -eq 'AutoRest.exe') -or 
-            ($swaggerMetaDict['AutoRestModeler'] -eq 'CompositeSwagger')) {
-            # None of the PSSwagger-required params are being overwritten, just call the CLI directly to avoid the extra disk op
-            $autoRestParams = @('-Input', $swaggerMetaDict['SwaggerSpecPath'], 
-                '-OutputDirectory', $generatedCSharpPath, 
-                '-Namespace', $NameSpace, 
-                '-AddCredentials', $true, 
-                '-CodeGenerator', $codeGenerator, 
-                '-ClientName', $ClientName
-                '-Modeler', $swaggerMetaDict['AutoRestModeler'] 
-            )
-        }
-        else {
-            # See https://aka.ms/autorest/cli for AutoRest.cmd options.
-            $autoRestParams = @(
-                "--input-file=$($swaggerMetaDict['SwaggerSpecPath'])",
-                "--output-folder=$generatedCSharpPath",
-                "--namespace=$NameSpace",
-                '--add-credentials',
-                '--clear-output-folder=true',
-                "--override-client-name=$ClientName"
-                '--verbose',
-                '--csharp'
-            )
 
-            if ($codeGenerator -eq 'Azure.CSharp') {
-                $autoRestParams += '--azure-arm'
-            }
-
-            if (('continue' -eq $DebugPreference) -or 
-                ('inquire' -eq $DebugPreference)) {
-                $autoRestParams += '--debug'
-            }            
+        if (('continue' -eq $DebugPreference) -or 
+            ('inquire' -eq $DebugPreference)) {
+            $autoRestParams += '--debug'
         }
 
         Write-Verbose -Message $LocalizedData.InvokingAutoRestWithParams

@@ -666,3 +666,160 @@ function convertToSwaggerDictionary(
 
   return swaggerDict;
 }
+
+
+function getPathParamInfo(
+  jsonPathItemObject: any,
+  swaggerDict: any,
+  definitionFunctionsDetails: any,
+  parameterGroupCache: any,
+  parametersTable: any,
+  psMetaParametersJsonObject: any) {
+
+  let index = Object.keys(parametersTable).length;
+  let operationId = jsonPathItemObject.operationId;
+
+  for (const param of jsonPathItemObject.parameters || []) {
+    const AllParameterDetails = getParameterDetails(param, swaggerDict, definitionFunctionsDetails, operationId, parameterGroupCache, psMetaParametersJsonObject);
+    for (const parameterDetails of AllParameterDetails) {
+      if (parameterDetails && ('x_ms_parameter_grouping_group' in parameterDetails || parameterDetails.Type)) {
+        parametersTable[index + ''] = parameterDetails;
+        ++index;
+      }
+    }
+  }
+
+  return parametersTable;
+}
+
+function getParameterDetails(parameterJsonObject: any, swaggerDict: any, definitionFunctionsDetails: any, operationId: string, parameterGroupCache: any, psMetaParametersJsonObject: any) {
+  const NameSpace = swaggerDict['Info'].NameSpace;
+  const Models = swaggerDict['Info'].Models;
+  let DefinitionTypeNamePrefix = `${NameSpace}.${Models}`;
+  let parameterName = getPascalCasedString(parameterJsonObject['x-ms-client-name'] || parameterJsonObject.name || "");
+
+  const paramTypeObject = getParamType(parameterJsonObject, DefinitionTypeNamePrefix, parameterName, swaggerDict, definitionFunctionsDetails);
+  DefinitionTypeNamePrefix += ".";
+
+  // Swagger Path Operations can be defined with reference to the global method based parameters.
+  // Add the method based global parameters as a function parameter.
+  const AllParameterDetailsArrayTemp = [];
+  let x_ms_parameter_grouping = '';
+  let ParameterDetails;
+  if (paramTypeObject.GlobalParameterDetails) {
+    ParameterDetails = paramTypeObject.GlobalParameterDetails;
+    x_ms_parameter_grouping = ParameterDetails['x_ms_parameter_grouping'];
+  }
+  else {
+    let IsParamMandatory = parameterJsonObject.required ? '$true' : '$false';
+    let ParameterDescription = parameterJsonObject.description || '';
+    let x_ms_parameter_location = 'method';
+
+    if (operationId && parameterJsonObject['x-ms-parameter-grouping']) {
+      const groupObject = parameterJsonObject['x-ms-parameter-grouping'];
+      if (groupObject.name) {
+        x_ms_parameter_grouping = getParameterGroupName(groupObject.name);
+      } else if (groupObject.postfix) {
+        x_ms_parameter_grouping = getParameterGroupName(groupObject.postfix);
+      } else {
+        x_ms_parameter_grouping = getParameterGroupName(operationId);
+      }
+    }
+
+    let FlattenOnPSCmdlet = !!(psMetaParametersJsonObject && psMetaParametersJsonObject[parameterName] && psMetaParametersJsonObject[parameterName]["x-ps-parameter-info"] && psMetaParametersJsonObject[parameterName]["x-ps-parameter-info"]["flatten"]);
+
+    ParameterDetails = {
+      Name: parameterName,
+      Type: paramTypeObject.ParamType,
+      ValidateSet: paramTypeObject.ValidateSetString,
+      Mandatory: IsParamMandatory,
+      Description: ParameterDescription,
+      IsParameter: paramTypeObject.IsParameter,
+      x_ms_parameter_location: x_ms_parameter_location,
+      x_ms_parameter_grouping: x_ms_parameter_grouping,
+      OriginalParameterName: parameterJsonObject.name,
+      FlattenOnPSCmdlet: FlattenOnPSCmdlet
+    };
+  }
+
+  if (parameterJsonObject['x-ms-client-flatten']) {
+    const referenceTypeName = ParameterDetails.Type.replace(DefinitionTypeNamePrefix, '');
+    // If the parameter should be flattened, return an array of parameter detail objects for each parameter of the referenced definition
+    const AllParameterDetails = {};
+    expandParameters(referenceTypeName, definitionFunctionsDetails, AllParameterDetails);
+    for (const expandedParameterDetail of Object.values(AllParameterDetails)) {
+      AllParameterDetailsArrayTemp.push(expandedParameterDetail);
+    }
+  } else {
+    // If the parameter shouldn't be flattened, just return the original parameter detail object
+    AllParameterDetailsArrayTemp.push(ParameterDetails);
+  }
+
+  // Loop through the parameters in case they belong to different groups after being expanded
+  const AllParameterDetailsArray = [];
+  for (const expandedParameterDetail of AllParameterDetailsArrayTemp) {
+    // The parent parameter object, wherever it is, set a grouping name
+    if (x_ms_parameter_grouping) {
+      expandedParameterDetail.x_ms_parameter_grouping = x_ms_parameter_grouping;
+      // An empty parameter details object is created that contains all known parameters in this group
+      if (parameterGroupCache.x_ms_parameter_grouping) {
+        ParameterDetails = parameterGroupCache.x_ms_parameter_grouping;
+      } else {
+        ParameterDetails = {
+          Name: x_ms_parameter_grouping,
+          x_ms_parameter_grouping_group: {},
+          IsParameter: true
+        };
+      }
+
+      if (!(expandedParameterDetail.Name in ParameterDetails.x_ms_parameter_grouping_group)) {
+        ParameterDetails.x_ms_parameter_grouping_group[expandedParameterDetail.Name] = expandedParameterDetail;
+      }
+
+      AllParameterDetailsArray.push(ParameterDetails);
+      parameterGroupCache[x_ms_parameter_grouping] = ParameterDetails;
+    } else {
+      AllParameterDetailsArray.push(expandedParameterDetail);
+    }
+  }
+
+  // Properties of ParameterDetails object
+  // .x_ms_parameter_grouping - string - non-empty if this is part of a group, contains the group's parsed name (should be the C# Type name)
+  // .x_ms_parameter_grouping_group - hashtable - table of parameter names to ParameterDetails, indicates this ParameterDetails object is a grouping
+  return AllParameterDetailsArray;
+}
+
+function expandParameters(referenceTypeName: string, definitionFunctionsDetails: any, allParameterDetails: any) {
+  // Expand unexpanded x-ms-client-flatten
+  // Leave it unexpanded afterwards
+
+  const fred = definitionFunctionsDetails[referenceTypeName]['Unexpanded_x_ms_client_flatten_DefinitionNames'];
+  if (fred.length > 0) {
+    for (const unexpandedDefinitionName of fred) {
+      if ('ExpandedParameters' in definitionFunctionsDetails[unexpandedDefinitionName] && !definitionFunctionsDetails[unexpandedDefinitionName].ExpandedParameters) {
+        expandParameters(unexpandedDefinitionName, definitionFunctionsDetails, allParameterDetails);
+      }
+
+      flattenParameterTable(unexpandedDefinitionName, definitionFunctionsDetails, allParameterDetails);
+    }
+  }
+
+  flattenParameterTable(referenceTypeName, definitionFunctionsDetails, allParameterDetails);
+}
+
+// Flattens the given type's parameter table into cmdlet parameters.
+function flattenParameterTable(referenceTypeName: string, definitionFunctionsDetails: any, allParameterDetails: any) {
+  const fred = definitionFunctionsDetails[referenceTypeName]['ParametersTable'];
+  for (const parameterEntry in fred) {
+    if (allParameterDetails[parameterEntry]) {
+      throw `Duplicate expanded property name: '${parameterEntry}'`;
+    }
+
+    allParameterDetails[parameterEntry] = cloneParameterDetail(fred[parameterEntry], { 'IsParameter': true });
+  }
+}
+
+// Clones a given parameter detail object by shallow copying all properties. Optionally adds additional entries.
+function cloneParameterDetail(parameterDetail: any, otherEntries: any) {
+  return Object.assign(parameterDetail, otherEntries);
+}

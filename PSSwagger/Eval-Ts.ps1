@@ -48,11 +48,12 @@ public static object Eval(string code, string func, string args)
     }
 
     {
-        File.WriteAllText(target + ".json", args);
+        var input = target + "." + Environment.TickCount + ".json";
+        File.WriteAllText(input, args);
         var proc = new Process {
             StartInfo = new ProcessStartInfo {
                 FileName = "cmd.exe",
-                Arguments = "/c node " + target + ".js " + target + ".json",
+                Arguments = "/c node " + target + ".js " + input,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

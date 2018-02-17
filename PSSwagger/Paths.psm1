@@ -101,7 +101,7 @@ function Get-SwaggerSpecPathInfo {
             ParametersTable            = $PathCommonParameters
             PSMetaParametersJsonObject = $PSMetaParametersJsonObject
         }
-        Get-PathParamInfo @GetPathParamInfo_params
+        $PathCommonParameters = Get-PathParamInfo @GetPathParamInfo_params
     }
 
     $ResourceIdAndInputObjectDetails = $null
@@ -251,7 +251,7 @@ function Get-SwaggerSpecPathInfo {
                 ParametersTable            = $ParametersTable
                 PSMetaParametersJsonObject = $PSMetaParametersJsonObject
             }
-            Get-PathParamInfo @GetPathParamInfo_params2
+            $ParametersTable = Get-PathParamInfo @GetPathParamInfo_params2
 
             $responses = ""
             if ((Get-Member -InputObject $_.value -Name 'responses') -and $_.value.responses) {
