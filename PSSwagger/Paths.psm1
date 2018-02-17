@@ -29,9 +29,6 @@ function ConvertTo-HashtableFromPsCustomObject {
     } 
 }
 
-$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath SwaggerUtils.psm1) -DisableNameChecking
@@ -39,6 +36,8 @@ Import-Module (Join-Path -Path $PSScriptRoot -ChildPath SwaggerUtils.psm1) -Disa
 . "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
 
+
+$tsc = Get-Ts
 function Get-SwaggerSpecPathInfo {
     [CmdletBinding()]
     param (

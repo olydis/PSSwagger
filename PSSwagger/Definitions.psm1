@@ -8,16 +8,14 @@
 #
 #########################################################################################
 
-$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-$tsLoadSwagger = [System.IO.File]::ReadAllText("$PSScriptRoot\LoadSwagger.ts")
-
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath SwaggerUtils.psm1) -DisableNameChecking
 . "$PSScriptRoot\PSSwagger.Constants.ps1" -Force
 . "$PSScriptRoot\Eval-Ts.ps1" -Force
 Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwagger.Resources.psd1
+
+$tsc = Get-Ts
 
 <#
 .DESCRIPTION
@@ -333,7 +331,7 @@ function Get-DefinitionParameterType
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
 
-    $res = Eval-Ts $tsLoadSwagger "getDefinitionParameterType" $ParameterJsonObject, $DefinitionName, $ParameterName, $DefinitionFunctionsDetails, $ModelsNamespace, $ParametersTable
+    $res = Eval-Ts $tsc "getDefinitionParameterType" $ParameterJsonObject, $DefinitionName, $ParameterName, $DefinitionFunctionsDetails, $ModelsNamespace, $ParametersTable
 
     return ConvertTo-HashtableFromPsCustomObject $res
 }
@@ -491,12 +489,7 @@ function New-SwaggerDefinitionCommand
         [Parameter(Mandatory=$false)]
         [AllowEmptyString()]
         [string]
-        $HeaderContent,
-
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('None', 'PSScriptAnalyzer')]
-        [string]
-        $Formatter = 'None'
+        $HeaderContent
     )
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
@@ -524,8 +517,7 @@ function New-SwaggerDefinitionCommand
                 $FunctionsToExport += New-SwaggerSpecDefinitionCommand -FunctionDetails $FunctionDetails `
                                                                     -GeneratedCommandsPath $SwaggerDefinitionCommandsPath `
                                                                     -ModelsNamespace "$Namespace.$Models" `
-                                                                    -PSHeaderComment $PSHeaderComment `
-                                                                    -Formatter $Formatter
+                                                                    -PSHeaderComment $PSHeaderComment
             }
 
             New-SwaggerDefinitionFormatFile -FunctionDetails $FunctionDetails `
@@ -733,67 +725,12 @@ function New-SwaggerSpecDefinitionCommand
         [Parameter(Mandatory=$false)]
         [AllowEmptyString()]
         [string]
-        $PSHeaderComment,
-
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('None', 'PSScriptAnalyzer')]
-        [string]
-        $Formatter = 'None'
+        $PSHeaderComment
     )
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     
-    $commandName = "New-$($FunctionDetails.Name)Object"
-    $commandHelp = (Eval-Ts $tsTemplates "helpDescStr" $FunctionDetails.synopsis, $FunctionDetails.description)
-
-    [string]$paramHelp = ""
-    $paramblock = ""
-    $body = ""
-    $DefinitionTypeNamePrefix = "$ModelsNamespace."
-    $ParameterSetPropertyString = ""
-    $ValueFromPipelineString = ''
-    $ValueFromPipelineByPropertyNameString = ''
-    $parameterDefaultValueOption = ""
-
-    $FunctionDetails.ParametersTable.GetEnumerator() | ForEach-Object {
-        $ParameterDetails = $_.Value
-        if (-not ($ParameterDetails.ContainsKey('Discriminator')) -or (-not $ParameterDetails.Discriminator)) {
-            $isParamMandatory = $ParameterDetails.Mandatory
-            $parameterName = $ParameterDetails.Name
-            $paramName = "`$$parameterName" 
-            $paramType = "[$($ParameterDetails.Type)]$([Environment]::NewLine)        "
-            $AllParameterSetsString = (Eval-Ts $tsTemplates "parameterAttributeString" $isParamMandatory, $ValueFromPipelineByPropertyNameString, $ValueFromPipelineString, $ParameterSetPropertyString)
-            $ValidateSetDefinition = $null
-            if ($ParameterDetails.ValidateSet)
-            {
-                $ValidateSetString = $ParameterDetails.ValidateSet
-                $ValidateSetDefinition = (Eval-Ts $tsTemplates "validateSetDefinitionString" $ValidateSetString)
-            }
-            $ParameterAliasAttribute = $null
-            $paramblock += (Eval-Ts $tsTemplates "parameterDefString" $AllParameterSetsString, $ParameterAliasAttribute, $ValidateSetDefinition, $paramType, $paramName, $parameterDefaultValueOption)
-
-            $pDescription = $ParameterDetails.Description
-            $paramHelp += (Eval-Ts $tsTemplates "helpParamStr" $parameterName, $pDescription)
-        }
-    }
-
-    $paramblock = $paramBlock.TrimEnd().TrimEnd(",")
-
-    $DefinitionTypeName = $DefinitionTypeNamePrefix + $FunctionDetails.Name
-    $body = $executionContext.InvokeCommand.ExpandString($createObjectStr)
-
-    $CommandString = $executionContext.InvokeCommand.ExpandString($advFnSignatureForDefintion)
-
-    if(-not (Test-Path -Path $GeneratedCommandsPath -PathType Container)) {
-        $null = New-Item -Path $GeneratedCommandsPath -ItemType Directory
-    }
-
-    $CommandFilePath = Join-Path -Path $GeneratedCommandsPath -ChildPath "$CommandName.ps1"
-    Out-File -InputObject (Get-FormattedFunctionContent -Content @($PSHeaderComment, $CommandString) -Formatter $Formatter) -FilePath $CommandFilePath -Encoding ascii -Force -Confirm:$false -WhatIf:$false
-
-    Write-Verbose -Message ($LocalizedData.GeneratedDefinitionCommand -f ($commandName, $FunctionDetails.Name))
-
-    return $CommandName
+    return Eval-Ts $tsc "newSwaggerSpecDefinitionCommand" $FunctionDetails, $GeneratedCommandsPath, $ModelsNamespace, $PSHeaderComment
 }
 
 <#

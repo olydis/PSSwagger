@@ -36,7 +36,6 @@ serviceType | `string` | One of 'azure' or 'azure_stack', if this service is an 
 customAuthCommand | `string` | Specify a PowerShell cmdlet that should return a Microsoft.Rest.ServiceClientCredentials object that implements custom authentication logic.
 hostOverrideCommand | `string` | Specify a PowerShell cmdlet that should return a custom hostname string. Overrides the default host in the specification.
 noAuthChallenge | `bool` | Specify true to indicate that the service will not offer an authentication challenge, such as adding the WWW-Authenticate header to a 401 response. Default is false.
-formatter | `string` | Specify a formatter to use. One of: 'None', 'PSScriptAnalyzer'
 defaultWildcardChar | `character` | Default wildcard character for auto-generated client-side filtering. Defaults to '%'.
 azureDefaults | `x-ps-msazure-defaults` | Defaults for Microsoft Azure services.
 

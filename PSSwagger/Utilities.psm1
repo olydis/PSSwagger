@@ -10,13 +10,22 @@
 
 Import-Module -Name "$PSScriptRoot\Eval-Ts.ps1" -Force
 
-$tsUtilities = [System.IO.File]::ReadAllText("$PSScriptRoot\Utilities.ts")
+
+$tsc = "
+$([System.IO.File]::ReadAllText("$PSScriptRoot\Utilities.ts"))`n
+$([System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts"))`n
+$([System.IO.File]::ReadAllText("$PSScriptRoot\LoadSwagger.ts"))`n
+"
+
+function Get-Ts() {
+    return $tsc
+}
 
 function Get-PascalCasedString
 {
     param([string] $Name)
 
-    return (Eval-Ts $tsUtilities "getPascalCasedString" $Name)
+    return (Eval-Ts $tsc "getPascalCasedString" $Name)
 }
 
 <#
@@ -42,7 +51,7 @@ function Remove-SpecialCharacter
 {
     param([string] $Name)
 
-    return (Eval-Ts $tsUtilities "removeSpecialCharacter" $Name)
+    return (Eval-Ts $tsc "removeSpecialCharacter" $Name)
 }
 
 # Utility to throw an errorrecord
@@ -149,23 +158,4 @@ function Get-CallerPreference
             }
         }
     }
-}
-
-function Get-FormattedFunctionContent {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true)]
-        [ValidateSet('None', 'PSScriptAnalyzer')]
-        [string]
-        $Formatter,
-
-        [Parameter(Mandatory=$true)]
-        [string[]]
-        $Content
-    )
-
-    $singleStringContent = $Content | Out-String
-    $singleStringContent = $singleStringContent -replace "`r`n","`n"
-    $singleStringContent = $singleStringContent -replace "`r","`n"
-    return $singleStringContent
 }

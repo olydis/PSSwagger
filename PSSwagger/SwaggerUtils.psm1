@@ -85,9 +85,6 @@ function ConvertTo-HashtableFromPsCustomObject2 {
     } 
 }
 
-$tsTemplates = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
-$tsLoadSwagger = [System.IO.File]::ReadAllText("$PSScriptRoot\LoadSwagger.ts")
 
 Microsoft.PowerShell.Core\Set-StrictMode -Version Latest
 Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1)
@@ -98,6 +95,8 @@ Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwa
 $script:CmdVerbTrie = $null
 $script:CSharpCodeNamer = $null
 $script:CSharpCodeNamerLoadAttempted = $false
+
+$tsc = Get-Ts
 
 $script:IgnoredAutoRestParameters = @(@('Modeler', 'm'), @('AddCredentials'), @('CodeGenerator', 'g'))
 
@@ -162,7 +161,7 @@ function ConvertTo-SwaggerDictionary {
     )
     
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-    $res = Eval-Ts $tsLoadSwagger "convertToSwaggerDictionary" $SwaggerSpecPath, $SwaggerSpecFilePaths, $DefinitionFunctionsDetails, $ModuleName, "$($ModuleVersion.Major).$($ModuleVersion.Minor).$($ModuleVersion.Build)", $ClientTypeName, $ModelsName, $DefaultCommandPrefix, $Header, $AzureSpec, $DisableVersionSuffix, $PowerShellCodeGen, $PSMetaJsonObject
+    $res = Eval-Ts $tsc "convertToSwaggerDictionary" $SwaggerSpecPath, $SwaggerSpecFilePaths, $DefinitionFunctionsDetails, $ModuleName, "$($ModuleVersion.Major).$($ModuleVersion.Minor).$($ModuleVersion.Build)", $ClientTypeName, $ModelsName, $DefaultCommandPrefix, $Header, $AzureSpec, $DisableVersionSuffix, $PowerShellCodeGen, $PSMetaJsonObject
     $res = ConvertTo-HashtableFromPsCustomObject $res
     return $res
 }
@@ -199,7 +198,7 @@ function Get-PathParamInfo
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
 
-    $res = Eval-Ts $tsLoadSwagger "getPathParamInfo" $JsonPathItemObject, $SwaggerDict, $DefinitionFunctionsDetails, $ParameterGroupCache, $ParametersTable, $PSMetaParametersJsonObject
+    $res = Eval-Ts $tsc "getPathParamInfo" $JsonPathItemObject, $SwaggerDict, $DefinitionFunctionsDetails, $ParameterGroupCache, $ParametersTable, $PSMetaParametersJsonObject
     $res = ConvertTo-HashtableFromPsCustomObject $res
     $ress = New-Object "Hashtable"
     foreach ($fred in $res.GetEnumerator()) {
@@ -225,7 +224,7 @@ function Get-PathCommandName
 
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     
-    $res = Eval-Ts $tsSwaggerUtils "getPathCommandName" $OperationId
+    $res = Eval-Ts $tsc "getPathCommandName" $OperationId
     return (ConvertTo-HashtableFromPsCustomObject $res)
 }
 
@@ -278,7 +277,7 @@ function Get-AzureResourceIdParameters {
         $DefinitionList
     )
 
-    return Eval-Ts $tsSwaggerUtils "getAzureResourceIdParameters" $JsonPathItemObject, $ResourceId, $NameSpace, $Models, $DefinitionList
+    return Eval-Ts $tsc "getAzureResourceIdParameters" $JsonPathItemObject, $ResourceId, $NameSpace, $Models, $DefinitionList
 }
 
 function Get-CSharpModelName
@@ -289,7 +288,7 @@ function Get-CSharpModelName
         $Name
     )
 
-    return (Eval-Ts $tsSwaggerUtils "getCSharpModelName" $Name)
+    return (Eval-Ts $tsc "getCSharpModelName" $Name)
 }
 
 <# Create an object from an external dependency with possible type name changes. Optionally resolve the external dependency using a delegate.

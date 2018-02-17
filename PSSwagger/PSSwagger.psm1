@@ -32,8 +32,10 @@ function ConvertTo-HashtableFromPsCustomObject {
     } 
 }
 
-$tsSwaggerUtils = [System.IO.File]::ReadAllText("$PSScriptRoot\SwaggerUtils.ts")
 Import-Module "$PSScriptRoot\Eval-Ts.ps1" -Force
+Import-Module (Join-Path -Path $PSScriptRoot -ChildPath Utilities.psm1) -DisableNameChecking
+
+$tsc = Get-Ts
 
 $SubScripts = @(
     'PSSwagger.Constants.ps1'
@@ -155,9 +157,6 @@ Microsoft.PowerShell.Utility\Import-LocalizedData  LocalizedData -filename PSSwa
       - InputObject parameter set with the same object type returned by Get. Supports piping from Get operarion to action cmdlets.
       - ResourceId parameter set which splits the resource id into component parts (supports piping from generic cmdlets).
     - Parameter name of Azure resource name parameter will be generated as 'Name' and the actual resource name parameter from the resource id will be added as an alias.
-    
-.PARAMETER  Formatter
-    Specify a formatter to use. 
 
 .PARAMETER  CopyUtilityModuleToOutput
     Copy the utility module to the output generated module. This has the effect of hardcoding the version of the utility module used by the generated module. The copied utility module must be re-signed if it was originally signed.
@@ -275,14 +274,6 @@ function New-PSSwaggerModule {
         [Parameter(Mandatory = $false, ParameterSetName = 'SpecificationUri')]
         [switch]
         $ConfirmBootstrap,
-
-        [Parameter(Mandatory = $false, ParameterSetName = 'SpecificationPath')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'SpecificationUri')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'SdkAssemblyWithSpecificationPath')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'SdkAssemblyWithSpecificationUri')]
-        [string]
-        [ValidateSet('None', 'PSScriptAnalyzer')]
-        $Formatter,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'SpecificationPath')]
         [Parameter(Mandatory = $false, ParameterSetName = 'SpecificationUri')]
@@ -454,7 +445,6 @@ function New-PSSwaggerModule {
         NoAuthChallenge       = $false
         NameSpacePrefix       = ''
         Header                = ''
-        Formatter             = 'PSScriptAnalyzer'
         DefaultWildcardChar   = '%'
         AzureDefaults         = $null
     }
@@ -480,24 +470,6 @@ function New-PSSwaggerModule {
     if (-not $PSMetaJsonObject) {
         foreach ($additionalSwaggerSpecPath in $SwaggerSpecFilePaths) {
             Get-PowerShellCodeGenSettings -Path $additionalSwaggerSpecPath -CodeGenSettings $PowerShellCodeGen
-        }
-    }
-
-    if (-not $Formatter) {
-        if ($PowerShellCodeGen['Formatter']) {
-            $Formatter = $PowerShellCodeGen['Formatter']
-        }
-        else {
-            $Formatter = 'None'
-        }
-    }
-
-    if ($Formatter) {
-        if ($Formatter -eq 'PSScriptAnalyzer') {
-            if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) {
-                Write-Warning $LocalizedData.PSScriptAnalyzerMissing
-                $Formatter = 'None'
-            }
         }
     }
 
@@ -731,14 +703,13 @@ function New-PSSwaggerModule {
 
     $FunctionsToExport = @()
     Write-Warning "$($SwaggerDict | ConvertTo-Json)"
-    $FunctionsToExport += Eval-Ts $tsSwaggerUtils "newSwaggerSpecPathCommand" $swaggerDict.Security, $swaggerDict.SecurityDefinitions, $swaggerDict.Info, $swaggerDict.Definitions, $swaggerDict.CommandDefaults, $SwaggerMetaDict['UseAzureCsharpGenerator'].IsPresent, $SwaggerMetaDict['PowerShellCodeGen'], $DefinitionFunctionsDetails, $PathFunctionDetails, $SwaggerMetaDict['outputDirectory'], $PSHeaderComment
+    $FunctionsToExport += Eval-Ts $tsc "newSwaggerSpecPathCommand" $swaggerDict.Security, $swaggerDict.SecurityDefinitions, $swaggerDict.Info, $swaggerDict.Definitions, $swaggerDict.CommandDefaults, $SwaggerMetaDict['UseAzureCsharpGenerator'].IsPresent, $SwaggerMetaDict['PowerShellCodeGen'], $DefinitionFunctionsDetails, $PathFunctionDetails, $SwaggerMetaDict['outputDirectory'], $PSHeaderComment
 
     $FunctionsToExport += New-SwaggerDefinitionCommand -DefinitionFunctionsDetails $DefinitionFunctionsDetails `
         -SwaggerMetaDict $swaggerMetaDict `
         -NameSpace $nameSpace `
         -Models $models `
-        -HeaderContent $HeaderContent `
-        -Formatter $Formatter
+        -HeaderContent $HeaderContent
 
     $RootModuleFilePath = Join-Path $outputDirectory "$Name.psm1"
     $testCoreModuleRequirements = ''
