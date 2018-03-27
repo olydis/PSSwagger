@@ -111,6 +111,7 @@ if ($TestSuite.Contains("All") -or $TestSuite.Contains("ScenarioTest")) {
     # Set up the common generated modules location
     $generatedModulesPath = Join-Path -Path "$PSScriptRoot" -ChildPath 'Generated'
     # Remove existing Generated folder contents.
+    Write-Warning $generatedModulesPath
     if (Test-Path -Path $generatedModulesPath -PathType Container) {
         Remove-Item -Path $generatedModulesPath -Recurse -Force
     }

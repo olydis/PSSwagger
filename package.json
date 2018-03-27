@@ -1,0 +1,25 @@
+{
+  "name": "psswagger",
+  "version": "1.0.0",
+  "description": "| Gitter | AppVeyor (Windows) | |--------------------------|--------------------------| | [![gitter-image][]][gitter-site] | [![av-image][]][av-site] |",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olydis/PSSwagger.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/olydis/PSSwagger/issues"
+  },
+  "homepage": "https://github.com/olydis/PSSwagger#readme",
+  "devDependencies": {
+    "typescript": "^2.8.1"
+  }
+}

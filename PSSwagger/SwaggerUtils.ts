@@ -3,9 +3,10 @@ function logDebug(message: string) { }
 function logWarning(message: string) { }
 
 // pluralization
-import { EnglishPluralizationService } from "C:/work/english-pluralization-service";
+declare const require: any;
+const EnglishPluralizationService = require("C:/work/english-pluralization-service").EnglishPluralizationService;
 
-function getPluralizationService(): EnglishPluralizationService {
+function getPluralizationService(): any {
   const result = new EnglishPluralizationService();
   const customMappings = [
     {

@@ -3,10 +3,51 @@ using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Management.Automation;
 
 public static class NodeTs
 {
+
+static void StartCollect(Process process, out string stdoutx, out string stderrx)
+{
+    int timeout = 10000;
+    string stdout = "";
+    string stderr = "";
+
+    using (AutoResetEvent outputWaitHandle = new AutoResetEvent(false))
+    using (AutoResetEvent errorWaitHandle = new AutoResetEvent(false))
+    {
+        process.OutputDataReceived += (sender, e) => {
+            if (e.Data == null) outputWaitHandle.Set();
+            else stdout += e.Data;
+        };
+        process.ErrorDataReceived += (sender, e) =>
+        {
+            if (e.Data == null) errorWaitHandle.Set();
+            else stderr += e.Data;
+        };
+
+        process.Start();
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        if (process.WaitForExit(timeout) &&
+            outputWaitHandle.WaitOne(timeout) &&
+            errorWaitHandle.WaitOne(timeout))
+        {
+            stdoutx = stdout;
+            stderrx = stderr;
+        }
+        else
+        {
+            throw new Exception("timeout");
+        }
+    }
+}
+    
+
 public static object Eval(string code, string func, string args)
 {
     code = code + ";\n console.log(JSON.stringify(" + func + ".apply(null, require(process.argv.reverse()[0]).args)))";
@@ -15,34 +56,32 @@ public static object Eval(string code, string func, string args)
     if (!File.Exists(target + ".js"))
     {
         File.WriteAllText(target + ".ts", code);
+        var tscCmd = "tsc --target es2017 --module commonjs " + target + ".ts";
+        Console.WriteLine(tscCmd);
         var proc = new Process {
             StartInfo = new ProcessStartInfo {
                 FileName = "cmd.exe",
-                Arguments = "/c tsc --target es2017 --module commonjs " + target + ".ts",
+                Arguments = "/c " + tscCmd,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             }
         };
-        proc.Start();
-		string stderr = "";
-        while (!proc.StandardError.EndOfStream)
-        {
-            stderr += proc.StandardError.ReadLine() + "\n";
-        }
-        while (!proc.StandardOutput.EndOfStream)
-        {
-			var stdout = proc.StandardOutput.ReadLine() + "\n";
-            if (stdout.Contains("TS2304"))
-                if (stdout.Contains("Buffer") || stdout.Contains("process") || stdout.Contains("require"))
-                    continue;
-            stderr += stdout;
-        }
-        if (stderr.Trim() != "")
+        string stdout, stderr;
+        StartCollect(proc, out stdout, out stderr);
+        stderr += stdout;
+        bool err = false;
+        foreach (var line in stderr.Split('\n'))
+            if (!line.Contains("TS2304") || !(stdout.Contains("Buffer") || stdout.Contains("process") || stdout.Contains("require")))
+            {
+                Console.WriteLine(line);
+                err = true;
+            }
+        if (err)
         {
             try { File.Delete(target + ".js"); } catch {}
-            throw new Exception(stderr);
+            throw new Exception("compilation errors occurred");
         }
         proc.WaitForExit();
     }
@@ -60,23 +99,12 @@ public static object Eval(string code, string func, string args)
                 CreateNoWindow = true
             }
         };
-        proc.Start();
 
-		string stderr = "";
-        while (!proc.StandardError.EndOfStream)
-        {
-            stderr += proc.StandardError.ReadLine() + "\n";
-        }
+        string stdout, stderr;
+        StartCollect(proc, out stdout, out stderr);
 		if (stderr.Trim() != "")
         	throw new Exception(stderr);
-
-        string line = "null";
-        while (!proc.StandardOutput.EndOfStream)
-        {
-            line = proc.StandardOutput.ReadLine();
-        }
-        proc.WaitForExit();
-        return line;
+        return stdout;
     }
 }
 }

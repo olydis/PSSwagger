@@ -1,3 +1,5 @@
+/// <reference path="./SwaggerUtils.ts" />
+/// <reference path="./Utilities.ts" />
 
 const psSwaggerDefaultNamespace = "Microsoft.PowerShell";
 
